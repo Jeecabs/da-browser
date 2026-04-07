@@ -32,6 +32,7 @@ export default function (pi: ExtensionAPI) {
   let state = createBrowserState(process.cwd());
 
   const refreshUi = (ctx: ExtensionContext): void => {
+    if (!ctx.hasUI) return;
     const t = ctx.ui.theme;
     const dot = state.connected ? t.fg("success", "\u25CF") : t.fg("dim", "\u25CB");
     const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
@@ -44,7 +45,7 @@ export default function (pi: ExtensionAPI) {
 
   const applyActionResult = (result: BrowserActionResult, ctx: ExtensionContext): void => {
     refreshUi(ctx);
-    if (result.summary) ctx.ui.notify(result.summary.split("\n")[0] ?? result.summary, "info");
+    if (ctx.hasUI && result.summary) ctx.ui.notify(result.summary.split("\n")[0] ?? result.summary, "info");
   };
 
   const handleFailure = (ctx: ExtensionContext, error: unknown): never => {

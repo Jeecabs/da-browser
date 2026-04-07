@@ -8,19 +8,22 @@ importers:
 
   .:
     dependencies:
+      '@mariozechner/pi-agent-core':
+        specifier: '*'
+        version: 0.65.2(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-tui':
+        specifier: '*'
+        version: 0.65.2
+    devDependencies:
       '@mariozechner/pi-ai':
         specifier: ^0.65.2
         version: 0.65.2(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-coding-agent':
         specifier: ^0.65.2
         version: 0.65.2(ws@8.20.0)(zod@4.3.6)
-      '@mariozechner/pi-tui':
-        specifier: ^0.65.2
-        version: 0.65.2
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.49
-    devDependencies:
       '@types/node':
         specifier: ^24.3.0
         version: 24.12.2

@@ -32,7 +32,10 @@ export default function (pi: ExtensionAPI) {
   let state = createBrowserState(process.cwd());
 
   const refreshUi = (ctx: ExtensionContext): void => {
-    ctx.ui.setStatus("browser-ops", browserStatusText(state));
+    const t = ctx.ui.theme;
+    const dot = state.connected ? t.fg("success", "\u25CF") : t.fg("dim", "\u25CB");
+    const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
+    ctx.ui.setStatus("browser-ops", `${dot} ${t.fg("muted", label)}`);
   };
 
   const persistCommandState = (): void => {

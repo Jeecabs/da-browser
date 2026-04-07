@@ -45,7 +45,9 @@ export default function (pi: ExtensionAPI) {
         lines.push(`${dot} ${domain}`);
 
         if (state.lastAction) {
-          lines.push(`  ${theme.fg("dim", state.lastAction)}`);
+          // Show just the verb (e.g. "snapshot" not "open https://long-url.com")
+          const verb = state.lastAction.split(/\s/)[0] ?? state.lastAction;
+          lines.push(`  ${theme.fg("dim", verb)}`);
         }
       } else {
         lines.push(`${theme.fg("dim", "\u25CB")} ${theme.fg("muted", "disconnected")}`);

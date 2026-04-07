@@ -135,7 +135,12 @@ export function domainFromUrl(url?: string): string | undefined {
   if (!url) return undefined;
 
   try {
-    return new URL(url).hostname || undefined;
+    const parsed = new URL(url);
+    if (!parsed.hostname) return undefined;
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return `${parsed.hostname}:${parsed.port || "80"}`;
+    }
+    return parsed.hostname;
   } catch {
     return undefined;
   }

@@ -157,7 +157,7 @@ function hashString(input: string): string {
   return (hash >>> 0).toString(16);
 }
 
-function formatRelativeTime(timestamp?: number): string {
+export function formatRelativeTime(timestamp?: number): string {
   if (!timestamp) return "-";
 
   const deltaMs = Date.now() - timestamp;

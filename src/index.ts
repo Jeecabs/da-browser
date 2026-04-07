@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import { Text } from "@mariozechner/pi-tui";
 
 import {
   checkpointBrowserPage,
@@ -17,8 +18,8 @@ import {
 import {
   browserStatusText,
   browserSummary,
-  browserWidgetLines,
   createBrowserState,
+  formatRelativeTime,
   mergeBrowserState,
   resolveBrowserPort,
   serializeBrowserState,
@@ -34,7 +35,33 @@ export default function (pi: ExtensionAPI) {
 
   const refreshUi = (ctx: ExtensionContext): void => {
     ctx.ui.setStatus("browser-ops", browserStatusText(state));
-    ctx.ui.setWidget("browser-ops", browserWidgetLines(state));
+    ctx.ui.setWidget("browser-ops", (_tui, theme) => {
+      const lines: string[] = [];
+
+      if (state.connected) {
+        const dot = theme.fg("success", "\u25CF");
+        const domain = state.currentDomain
+          ? theme.fg("accent", state.currentDomain)
+          : theme.fg("muted", `cdp:${state.port}`);
+        lines.push(`${dot} ${domain}`);
+
+        if (state.lastAction) {
+          const parts = [state.lastAction];
+          const time = formatRelativeTime(state.lastSnapshotAt);
+          if (time !== "-") parts.push(time);
+          lines.push(`  ${theme.fg("dim", parts.join(" \u00B7 "))}`);
+        }
+      } else {
+        lines.push(`${theme.fg("dim", "\u25CB")} ${theme.fg("muted", "disconnected")}`);
+      }
+
+      if (state.lastError) {
+        const err = state.lastError.split("\n")[0]?.slice(0, 60) ?? state.lastError;
+        lines.push(`  ${theme.fg("warning", err)}`);
+      }
+
+      return new Text(lines.join("\n"), 0, 0);
+    });
   };
 
   const persistCommandState = (): void => {

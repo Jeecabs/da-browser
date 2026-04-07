@@ -1,0 +1,25 @@
+{
+  "name": "pi-browser-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "description": "First-class browser automation harness for pi, built on agent-browser and Arc auth context.",
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.65.2",
+    "@mariozechner/pi-coding-agent": "^0.65.2",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}

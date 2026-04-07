@@ -57,7 +57,7 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 |---------|-------------|
 | `/browser connect [port]` | Connect to Arc (default port `9222`) |
 | `/browser status` | Show connection state |
-| `/browser cleanup` | Tear down session and remove auth artifacts |
+| `/browser cleanup` | Disconnect and reset state |
 
 **Tools (callable by the LLM):**
 
@@ -73,13 +73,17 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 | `browser_eval` | Evaluate JS in page context |
 | `browser_checkpoint` | Save current page state |
 
+### How it works
+
+The extension connects to Arc via Chrome DevTools Protocol (CDP). Arc doesn't expose page targets by default, so the extension automatically creates one — opening a blank tab that inherits your full cookie/auth context. All subsequent commands (`open`, `snapshot`, `click`, etc.) operate on that tab.
+
 ### Runtime prerequisites
 
 - [`agent-browser`](https://github.com/nicholasoxford/agent-browser) installed and on `PATH`
 - Arc launched with remote debugging:
 
 ```bash
-/Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
+roo /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
 ```
 
 The `/browser connect` command checks for both and tells you what's missing.
@@ -91,10 +95,6 @@ Default port is `9222`. Override with any of:
 - `/browser connect 9333`
 - `browser_connect({ port: 9333 })`
 - `PI_BROWSER_PORT=9333` env var
-
-### Security note
-
-The auth export file is written to `/tmp/pi-browser-ops/.../arc-auth.json` (plaintext session data). It is automatically deleted on `session_shutdown` or `/browser cleanup`.
 
 ## Writing new extensions
 

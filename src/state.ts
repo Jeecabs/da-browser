@@ -6,7 +6,6 @@ export type WaitMode = "none" | "load" | "networkidle";
 export interface BrowserState {
   port: number;
   artifactDir: string;
-  authFile: string;
   connected: boolean;
   currentUrl?: string;
   currentDomain?: string;
@@ -25,7 +24,6 @@ export function createBrowserState(cwd: string, port = resolveBrowserPort()): Br
   return {
     port,
     artifactDir,
-    authFile: join(artifactDir, "arc-auth.json"),
     connected: false,
   };
 }
@@ -80,43 +78,47 @@ export function resolveBrowserPort(explicitPort?: number): number {
 }
 
 export function browserStatusText(state: BrowserState): string {
-  const parts = [
-    state.connected ? "browser connected" : "browser disconnected",
-    state.currentDomain ? `domain ${state.currentDomain}` : `port ${state.port}`,
-  ];
-
-  if (state.lastAction) parts.push(`last ${state.lastAction}`);
-  return parts.join(" | ");
+  const dot = state.connected ? "\u25CF" : "\u25CB";
+  const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
+  return `${dot} ${label}`;
 }
 
 export function browserWidgetLines(state: BrowserState): string[] {
-  const lines = [
-    "browser-ops",
-    `status: ${state.connected ? "connected" : "disconnected"}`,
-    `domain: ${state.currentDomain ?? "-"}`,
-    `url: ${state.currentUrl ?? "-"}`,
-    `last action: ${state.lastAction ?? "-"}`,
-    `last snapshot: ${formatRelativeTime(state.lastSnapshotAt)}`,
-    `artifact dir: ${state.artifactDir}`,
-  ];
+  const dot = state.connected ? "\u25CF" : "\u25CB";
+  const status = state.connected ? "connected" : "disconnected";
+  const lines = [`${dot} browser  ${status}`];
 
-  if (state.lastError) lines.push(`last error: ${state.lastError}`);
+  if (state.currentDomain) {
+    lines.push(`  ${state.currentDomain}`);
+  }
+  if (state.lastAction) {
+    lines.push(`  ${state.lastAction}  ${formatRelativeTime(state.lastSnapshotAt)}`);
+  }
+  if (state.lastError) {
+    lines.push(`  ! ${truncateErrorLine(state.lastError)}`);
+  }
+
   return lines;
 }
 
 export function browserSummary(state: BrowserState): string {
+  const dot = state.connected ? "\u25CF" : "\u25CB";
   const lines = [
-    `Connection: ${state.connected ? "connected" : "disconnected"}`,
-    `Current URL: ${state.currentUrl ?? "-"}`,
-    `Current domain: ${state.currentDomain ?? "-"}`,
-    `Last action: ${state.lastAction ?? "-"}`,
-    `Last snapshot: ${formatRelativeTime(state.lastSnapshotAt)}`,
-    `Artifact dir: ${state.artifactDir}`,
-    `Auth export: ${state.authFile}`,
+    `${dot} ${state.connected ? "connected" : "disconnected"}  cdp:${state.port}`,
+    `  url       ${state.currentUrl ?? "-"}`,
+    `  domain    ${state.currentDomain ?? "-"}`,
+    `  action    ${state.lastAction ?? "-"}`,
+    `  snapshot  ${formatRelativeTime(state.lastSnapshotAt)}`,
+    `  artifacts ${state.artifactDir}`,
   ];
 
-  if (state.lastError) lines.push(`Last error: ${state.lastError}`);
+  if (state.lastError) lines.push(`  error     ${state.lastError}`);
   return lines.join("\n");
+}
+
+function truncateErrorLine(error: string, maxLen = 60): string {
+  const first = error.split("\n")[0] ?? error;
+  return first.length > maxLen ? first.slice(0, maxLen - 1) + "\u2026" : first;
 }
 
 export function normalizeRef(ref: string): string {

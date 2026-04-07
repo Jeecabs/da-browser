@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -38,35 +38,37 @@ export async function connectBrowser(
   if (!debugPortListening) {
     state.connected = false;
     state.lastAction = "connect";
-    state.lastError = `Arc remote debugging is not listening on port ${state.port}`;
+    state.lastError = `No browser listening on port ${state.port}`;
 
     return {
       summary: [
         `No browser is listening on port ${state.port}.`,
         "Quit Arc and relaunch it with:",
-        `/Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=${state.port}`,
+        `roo /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=${state.port}`,
       ].join("\n"),
       diagnostics: {
         port: state.port,
-        authFile: state.authFile,
         debugPortListening: false,
       },
     };
   }
 
-  await runAgentBrowser(pi, ["--auto-connect", "state", "save", state.authFile], ctx, 30_000);
-  await runAgentBrowser(pi, ["state", "load", state.authFile], ctx, 30_000);
+  // Arc doesn't expose page targets via CDP by default.
+  // Create one so agent-browser can connect. This opens a tab in Arc
+  // that inherits the user's full auth/cookie context.
+  await ensurePageTarget(pi, state.port, ctx);
 
+  // Verify CDP connection works by fetching the current URL
   await refreshCurrentUrl(pi, state, ctx);
+
   state.connected = true;
   state.lastAction = "connect";
   state.lastError = undefined;
 
   return {
-    summary: `Connected agent-browser using Arc auth on port ${state.port}.`,
+    summary: `Connected to browser via CDP on port ${state.port}.`,
     diagnostics: {
       port: state.port,
-      authFile: state.authFile,
       currentUrl: state.currentUrl,
       currentDomain: state.currentDomain,
     },
@@ -81,8 +83,8 @@ export async function openBrowserPage(
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, ["open", url], ctx, 60_000);
-  await waitForLoad(pi, ctx, waitMode);
+  await runAgentBrowser(pi, ["open", url], ctx, 60_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
   state.connected = true;
@@ -111,7 +113,7 @@ export async function snapshotBrowserPage(
 
   const args = ["snapshot"];
   if (interactiveOnly) args.push("-i");
-  const snapshot = await runAgentBrowser(pi, args, ctx, 60_000);
+  const snapshot = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
 
   const snapshotFile = artifactPath(state, label, "txt");
   await writeFile(snapshotFile, snapshot, "utf8");
@@ -146,8 +148,8 @@ export async function clickBrowserElement(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 30_000);
-  await waitForLoad(pi, ctx, waitMode);
+  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 30_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
   state.connected = true;
@@ -183,8 +185,8 @@ export async function fillBrowserElement(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 30_000);
-  await waitForLoad(pi, ctx, waitMode);
+  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 30_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
   state.connected = true;
@@ -213,8 +215,8 @@ export async function selectBrowserOption(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 30_000);
-  await waitForLoad(pi, ctx, waitMode);
+  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 30_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
   state.connected = true;
@@ -242,7 +244,7 @@ export async function evalInBrowser(
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
 
-  const output = await runAgentBrowser(pi, ["eval", script], ctx, 60_000);
+  const output = await runAgentBrowser(pi, ["eval", script], ctx, 60_000, { port: state.port });
   const evalFile = artifactPath(state, label, "txt");
   await writeFile(evalFile, output, "utf8");
   await refreshCurrentUrl(pi, state, ctx);
@@ -275,7 +277,7 @@ export async function checkpointBrowserPage(
   const safeLabel = sanitizeArtifactLabel(label);
   const screenshotFile = artifactPath(state, `${safeLabel}-screenshot`, "png");
 
-  await runAgentBrowser(pi, ["screenshot", screenshotFile], ctx, 60_000);
+  await runAgentBrowser(pi, ["screenshot", screenshotFile], ctx, 60_000, { port: state.port });
   state.lastScreenshotFile = screenshotFile;
 
   const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `${safeLabel}-snapshot`);
@@ -296,8 +298,9 @@ export async function checkpointBrowserPage(
 }
 
 export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void> {
-  await rm(state.authFile, { force: true });
   state.connected = false;
+  state.currentUrl = undefined;
+  state.currentDomain = undefined;
 }
 
 async function ensureReady(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
@@ -313,6 +316,36 @@ async function assertAgentBrowserInstalled(pi: ExtensionAPI, ctx: ExtensionConte
 
   if (result.code !== 0) {
     throw new Error("agent-browser CLI not found on PATH. Install it with `npm i -g agent-browser`.");
+  }
+}
+
+async function ensurePageTarget(
+  pi: ExtensionAPI,
+  port: number,
+  ctx: ExtensionContext,
+): Promise<void> {
+  // Check if a page target already exists
+  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/list`], {
+    signal: ctx.signal,
+    timeout: 5_000,
+  })) as CommandResult;
+
+  if (result.code === 0) {
+    try {
+      const targets = JSON.parse(result.stdout) as Array<{ type: string }>;
+      if (targets.some((t) => t.type === "page")) return;
+    } catch { /* fall through to create */ }
+  }
+
+  // No page target — create one. This opens a blank tab in Arc.
+  const create = (await pi.exec(
+    "curl",
+    ["-sf", "-X", "PUT", `http://localhost:${port}/json/new?about:blank`],
+    { signal: ctx.signal, timeout: 5_000 },
+  )) as CommandResult;
+
+  if (create.code !== 0) {
+    throw new Error(`Failed to create a page target on port ${port}. Is the browser accepting CDP connections?`);
   }
 }
 
@@ -334,7 +367,7 @@ async function refreshCurrentUrl(
   state: BrowserState,
   ctx: ExtensionContext,
 ): Promise<void> {
-  const result = await runAgentBrowser(pi, ["get", "url"], ctx, 10_000, true);
+  const result = await runAgentBrowser(pi, ["get", "url"], ctx, 10_000, { port: state.port, allowFailure: true });
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
@@ -345,24 +378,27 @@ async function runAgentBrowser(
   args: string[],
   ctx: ExtensionContext,
   timeout: number,
-  allowFailure = false,
+  options: { allowFailure?: boolean; port?: number } = {},
 ): Promise<string> {
-  const result = (await pi.exec("agent-browser", args, {
+  const fullArgs = options.port ? ["--cdp", String(options.port), ...args] : args;
+
+  const result = (await pi.exec("agent-browser", fullArgs, {
     signal: ctx.signal,
     timeout,
   })) as CommandResult;
 
   if (result.code !== 0) {
-    if (allowFailure) return "";
-    throw new Error(formatExecFailure("agent-browser", args, result));
+    if (options.allowFailure) return "";
+    throw new Error(formatExecFailure("agent-browser", fullArgs, result));
   }
 
   return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
 }
 
-async function waitForLoad(pi: ExtensionAPI, ctx: ExtensionContext, waitMode: WaitMode): Promise<void> {
+async function waitForLoad(pi: ExtensionAPI, ctx: ExtensionContext, waitMode: WaitMode, port: number): Promise<void> {
   if (waitMode === "none") return;
-  await runAgentBrowser(pi, ["wait", "--load", waitMode], ctx, 60_000);
+  const ms = waitMode === "networkidle" ? 2000 : 1000;
+  await runAgentBrowser(pi, ["wait", String(ms)], ctx, ms + 30_000, { port });
 }
 
 async function ensureArtifactDir(state: BrowserState): Promise<void> {

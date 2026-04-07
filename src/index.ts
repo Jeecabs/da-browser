@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
 
 import {
   checkpointBrowserPage,
@@ -34,21 +33,6 @@ export default function (pi: ExtensionAPI) {
 
   const refreshUi = (ctx: ExtensionContext): void => {
     ctx.ui.setStatus("browser-ops", browserStatusText(state));
-    ctx.ui.setWidget("browser-ops", (_tui, theme) => {
-      const lines: string[] = [];
-
-      if (state.connected) {
-        const dot = theme.fg("success", "\u25CF");
-        const domain = state.currentDomain
-          ? theme.fg("accent", state.currentDomain)
-          : theme.fg("muted", `cdp:${state.port}`);
-        lines.push(`${dot} ${domain}`);
-      } else {
-        lines.push(`${theme.fg("dim", "\u25CB")} ${theme.fg("muted", "disconnected")}`);
-      }
-
-      return new Text(lines.join("\n"), 0, 0);
-    });
   };
 
   const persistCommandState = (): void => {

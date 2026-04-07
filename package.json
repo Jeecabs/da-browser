@@ -8,7 +8,8 @@
   "pi": {
     "extensions": [
       "./src/index.ts",
-      "./src/supabase/index.ts"
+      "./src/supabase/index.ts",
+      "./src/linear/index.ts"
     ]
   },
   "scripts": {

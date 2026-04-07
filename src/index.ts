@@ -42,9 +42,7 @@ export default function (pi: ExtensionAPI) {
         const domain = state.currentDomain
           ? theme.fg("accent", state.currentDomain)
           : theme.fg("muted", `cdp:${state.port}`);
-        const verb = state.lastAction?.split(/\s/)[0];
-        const suffix = verb ? `  ${theme.fg("dim", verb)}` : "";
-        lines.push(`${dot} ${domain}${suffix}`);
+        lines.push(`${dot} ${domain}`);
       } else {
         lines.push(`${theme.fg("dim", "\u25CB")} ${theme.fg("muted", "disconnected")}`);
       }

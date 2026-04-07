@@ -7,7 +7,8 @@
   "description": "First-class browser automation harness for pi, built on agent-browser and Arc auth context.",
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./src/index.ts",
+      "./src/supabase/index.ts"
     ]
   },
   "scripts": {

@@ -19,7 +19,6 @@ import {
   browserStatusText,
   browserSummary,
   createBrowserState,
-  formatRelativeTime,
   mergeBrowserState,
   resolveBrowserPort,
   serializeBrowserState,
@@ -46,10 +45,7 @@ export default function (pi: ExtensionAPI) {
         lines.push(`${dot} ${domain}`);
 
         if (state.lastAction) {
-          const parts = [state.lastAction];
-          const time = formatRelativeTime(state.lastSnapshotAt);
-          if (time !== "-") parts.push(time);
-          lines.push(`  ${theme.fg("dim", parts.join(" \u00B7 "))}`);
+          lines.push(`  ${theme.fg("dim", state.lastAction)}`);
         }
       } else {
         lines.push(`${theme.fg("dim", "\u25CB")} ${theme.fg("muted", "disconnected")}`);

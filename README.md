@@ -11,13 +11,13 @@ pi auto-discovers extensions from two locations. Pick one:
 **Global** (all projects):
 
 ```bash
-git clone git@github.com:Jeecabs/pi-extensions.git ~/.pi/agent/extensions/pi-extensions
+git clone https://github.com/Jeecabs/pi-extensions.git ~/.pi/agent/extensions/pi-extensions
 ```
 
 **Project-local** (single repo):
 
 ```bash
-git clone git@github.com:Jeecabs/pi-extensions.git .pi/extensions/pi-extensions
+git clone https://github.com/Jeecabs/pi-extensions.git .pi/extensions/pi-extensions
 ```
 
 ### 2. Install dependencies

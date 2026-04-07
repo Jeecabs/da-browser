@@ -83,7 +83,7 @@ export async function openBrowserPage(
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, ["open", url], ctx, 60_000, { port: state.port });
+  await runAgentBrowser(pi, ["open", url], ctx, 120_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
@@ -148,7 +148,7 @@ export async function clickBrowserElement(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 30_000, { port: state.port });
+  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
@@ -185,7 +185,7 @@ export async function fillBrowserElement(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 30_000, { port: state.port });
+  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
@@ -215,7 +215,7 @@ export async function selectBrowserOption(
   await ensureReady(pi, state, ctx);
 
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 30_000, { port: state.port });
+  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
 
@@ -244,7 +244,7 @@ export async function evalInBrowser(
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
 
-  const output = await runAgentBrowser(pi, ["eval", script], ctx, 60_000, { port: state.port });
+  const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port });
   const evalFile = artifactPath(state, label, "txt");
   await writeFile(evalFile, output, "utf8");
   await refreshCurrentUrl(pi, state, ctx);

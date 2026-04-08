@@ -11,7 +11,8 @@
       "./src/supabase/index.ts",
       "./src/linear/index.ts",
       "./src/github/index.ts",
-      "./src/roo/index.ts"
+      "./src/roo/index.ts",
+      "./src/upstream.ts"
     ]
   },
   "scripts": {

@@ -10,7 +10,8 @@
       "./src/index.ts",
       "./src/supabase/index.ts",
       "./src/linear/index.ts",
-      "./src/github/index.ts"
+      "./src/github/index.ts",
+      "./src/roo/index.ts"
     ]
   },
   "scripts": {

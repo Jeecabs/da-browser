@@ -47,6 +47,23 @@ pi -e ./src/index.ts
 
 ## What's included
 
+### roo
+
+Wraps the [roo](https://github.com/Jeecabs/roo) process manager into pi tools so the agent can start background processes and read their logs.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `roo_status` | List all roo-managed processes globally (name, status, pid, uptime, cmd, cwd, log path) |
+| `roo_start` | Start a background process (auto-named from command, e.g. `npm run dev` → `dev`) |
+| `roo_stop` | Stop a process by name |
+| `roo_logs` | Read last N lines of a process's log output |
+
+The status bar shows a yellow dot with the process name when one is running, or a count when multiple are active.
+
+**Runtime prerequisite:** [`roo`](https://github.com/Jeecabs/roo) installed and on `PATH`.
+
 ### pi-browser-ops
 
 Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively.
@@ -83,7 +100,7 @@ The extension connects to Arc via Chrome DevTools Protocol (CDP). Arc doesn't ex
 - Arc launched with remote debugging:
 
 ```bash
-roo /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
+roo start --name arc /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
 ```
 
 The `/browser connect` command checks for both and tells you what's missing.

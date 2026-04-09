@@ -14,9 +14,6 @@
       "./src/roo/index.ts",
       "./src/upstream.ts",
       "./src/vicecity/index.ts"
-    ],
-    "themes": [
-      "./themes"
     ]
   },
   "scripts": {

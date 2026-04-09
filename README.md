@@ -35,7 +35,7 @@ If pi is already running:
 /reload
 ```
 
-The package declares its extensions and themes in `package.json` under `"pi"`, so pi picks them up automatically.
+The package declares its extensions in `package.json` under `"pi"`, and pi auto-discovers the top-level `themes/` directory. If you're installing this repo as a package, don't also copy `synthwave-84.json` into `~/.pi/agent/themes`, or pi will show it as a duplicate.
 
 ### Quick test (no install)
 
@@ -52,7 +52,7 @@ pi -e ./src/index.ts
 A custom pi theme with a stronger Vice City / Miami neon palette:
 
 - theme name: `synthwave-84`
-- install location for manual use: `~/.pi/agent/themes/synthwave-84.json`
+- manual install location (only if this repo is **not** already installed as a pi package): `~/.pi/agent/themes/synthwave-84.json`
 - theatre mode command: `/vicecity [on|off|status|pause|resume|next|prev]`
 - soundtrack helper: `/vicecity song <spotify track url|spotify:track:uri|query>`
 

@@ -53,9 +53,12 @@ A custom pi theme with a stronger Vice City / Miami neon palette:
 
 - theme name: `synthwave-84`
 - install location for manual use: `~/.pi/agent/themes/synthwave-84.json`
-- optional editor chrome command: `/vicecity [on|off|status]`
+- theatre mode command: `/vicecity [on|off|status|pause|resume|next|prev]`
+- soundtrack helper: `/vicecity song <spotify track url|spotify:track:uri|query>`
 
-`/vicecity on` enables an optional pseudo-glow editor treatment using a custom editor border. This is a terminal approximation, not a true blur/glow effect.
+`/vicecity on` enables the animated neon chrome, shows a small Spotify now-playing widget below the editor, and automatically starts the default Vice City soundtrack in the local macOS Spotify desktop client.
+
+`/vicecity song ...` overrides the soundtrack. Exact autoplay works with a Spotify track URL or `spotify:track:...` URI; plain text opens Spotify search results in the local client.
 
 
 ### roo

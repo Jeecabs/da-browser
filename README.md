@@ -1,6 +1,6 @@
 # pi-extensions
 
-Custom [pi](https://github.com/badlogic/pi-mono) extensions. Currently ships **pi-browser-ops** — a first-class browser automation harness built on `agent-browser` and Arc's auth context.
+Custom [pi](https://github.com/badlogic/pi-mono) extensions and themes. Currently ships **pi-browser-ops** — a first-class browser automation harness built on `agent-browser` and Arc's auth context — plus a neon **synthwave-84** theme.
 
 ## Install
 
@@ -35,7 +35,7 @@ If pi is already running:
 /reload
 ```
 
-The extension entry point is declared in `package.json` under `"pi": { "extensions": ["./src/index.ts"] }`, so pi picks it up automatically.
+The package declares its extensions and themes in `package.json` under `"pi"`, so pi picks them up automatically.
 
 ### Quick test (no install)
 
@@ -46,6 +46,17 @@ pi -e ./src/index.ts
 ```
 
 ## What's included
+
+### synthwave-84 theme
+
+A custom pi theme with a stronger Vice City / Miami neon palette:
+
+- theme name: `synthwave-84`
+- install location for manual use: `~/.pi/agent/themes/synthwave-84.json`
+- optional editor chrome command: `/vicecity [on|off|status]`
+
+`/vicecity on` enables an optional pseudo-glow editor treatment using a custom editor border. This is a terminal approximation, not a true blur/glow effect.
+
 
 ### roo
 

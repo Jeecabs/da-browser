@@ -12,7 +12,11 @@
       "./src/linear/index.ts",
       "./src/github/index.ts",
       "./src/roo/index.ts",
-      "./src/upstream.ts"
+      "./src/upstream.ts",
+      "./src/vicecity/index.ts"
+    ],
+    "themes": [
+      "./themes"
     ]
   },
   "scripts": {

@@ -56,7 +56,7 @@ A custom pi theme with a stronger Vice City / Miami neon palette and a restraine
 - theatre mode command: `/vicecity [on|off|status|pause|resume|next|prev]`
 - soundtrack helper: `/vicecity song <spotify track url|spotify:track:uri|query>`
 
-`/vicecity on` enables the animated neon chrome, switches pi into **WAVE-84** mode, adds a compact tuner strip above the editor, and automatically starts the default Vice City soundtrack in the local macOS Spotify desktop client.
+`/vicecity on` enables a minimal **WAVE-84** mode, adds a single compact tuner strip above the editor, and automatically starts the default Vice City soundtrack in the local macOS Spotify desktop client.
 
 `/vicecity song ...` overrides the soundtrack. Exact autoplay works with a Spotify track URL or `spotify:track:...` URI; plain text opens Spotify search results in the local client.
 

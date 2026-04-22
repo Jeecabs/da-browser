@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
-  "description": "First-class browser automation harness for pi, built on agent-browser and Arc auth context.",
+  "description": "Custom pi extensions, browser automation, process tools, and themes.",
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts",
@@ -14,6 +17,9 @@
       "./src/roo/index.ts",
       "./src/upstream.ts",
       "./src/vicecity/index.ts"
+    ],
+    "themes": [
+      "./themes"
     ]
   },
   "scripts": {

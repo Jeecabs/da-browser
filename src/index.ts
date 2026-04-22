@@ -152,7 +152,7 @@ export default function (pi: ExtensionAPI) {
     description: "Connect agent-browser to Arc or Chromium auth context using a smart-default remote debugging port",
     promptSnippet: "Connect browser automation to the user's existing authenticated browser session",
     promptGuidelines: [
-      "Use this tool before dashboard automation when browser auth has not been initialized in the current session.",
+      "Use browser_connect before dashboard automation when browser auth has not been initialized in the current session.",
     ],
     parameters: Type.Object({
       port: Type.Optional(Type.Number({ description: "Optional remote debugging port. Defaults to PI_BROWSER_PORT or 9222." })),

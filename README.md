@@ -1,12 +1,28 @@
 # pi-extensions
 
-Custom [pi](https://github.com/badlogic/pi-mono) extensions and themes. Currently ships **pi-browser-ops** — a first-class browser automation harness built on `agent-browser` and Arc's auth context — plus a neon **synthwave-84** theme.
+Custom [pi](https://github.com/badlogic/pi-mono) extensions and themes. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, an upstream monitor, Vice City chrome, and the neon **synthwave-84** theme.
 
 ## Install
 
-### 1. Clone into a pi extension directory
+### Recommended: install as a pi package
 
-pi auto-discovers extensions from two locations. Pick one:
+**Global** (all projects):
+
+```bash
+pi install git:github.com/Jeecabs/pi-extensions
+```
+
+**Project-local** (writes to `.pi/settings.json`):
+
+```bash
+pi install git:github.com/Jeecabs/pi-extensions -l
+```
+
+pi loads this repo through the `pi` manifest in `package.json`, which now explicitly declares both the extension entrypoints and the bundled `themes/` directory.
+
+### Local development: clone into a discovery directory
+
+Use this when actively editing the repo and relying on `/reload` hot-reload.
 
 **Global** (all projects):
 
@@ -20,26 +36,24 @@ git clone https://github.com/Jeecabs/pi-extensions.git ~/.pi/agent/extensions/pi
 git clone https://github.com/Jeecabs/pi-extensions.git .pi/extensions/pi-extensions
 ```
 
-### 2. Install dependencies
+Install dependencies:
 
 ```bash
 cd ~/.pi/agent/extensions/pi-extensions   # or your project-local path
 pnpm install
 ```
 
-### 3. Reload pi
+Reload pi if already running:
 
-If pi is already running:
-
-```
+```text
 /reload
 ```
 
-The package declares its extensions in `package.json` under `"pi"`, and pi auto-discovers the top-level `themes/` directory. If you're installing this repo as a package, don't also copy `synthwave-84.json` into `~/.pi/agent/themes`, or pi will show it as a duplicate.
+If this repo is installed as a package, do not also copy `themes/synthwave-84.json` into `~/.pi/agent/themes`, or pi will show duplicate themes.
 
 ### Quick test (no install)
 
-To try the extension without placing it in a discovery directory:
+For a one-off smoke test without auto-discovery:
 
 ```bash
 pi -e ./src/index.ts

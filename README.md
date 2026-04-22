@@ -2,6 +2,8 @@
 
 Custom [pi](https://github.com/badlogic/pi-mono) extensions and themes. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, an upstream monitor, Vice City chrome, and the neon **synthwave-84** theme.
 
+**Recommended pi version:** `0.68.1+`
+
 ## Install
 
 ### Recommended: install as a pi package

@@ -24,6 +24,7 @@ import {
   type BrowserState,
   type WaitMode,
 } from "./state.js";
+import { prepareCompatArguments } from "./extension-utils.js";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
 const CUSTOM_STATE_TYPE = "browser-ops-state";
@@ -157,6 +158,12 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       port: Type.Optional(Type.Number({ description: "Optional remote debugging port. Defaults to PI_BROWSER_PORT or 9222." })),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { debugPort: "port" },
+        numberFields: ["port"],
+      });
+    },
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       try {
         if (typeof _params.port === "number") state.port = resolveBrowserPort(_params.port);
@@ -198,6 +205,12 @@ export default function (pi: ExtensionAPI) {
       interactiveOnly: Type.Optional(Type.Boolean({ description: "Capture only interactive elements", default: true })),
       label: Type.Optional(Type.String({ description: "Optional artifact label" })),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { interactive: "interactiveOnly" },
+        booleanFields: ["interactiveOnly"],
+      });
+    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await snapshotBrowserPage(
@@ -225,6 +238,17 @@ export default function (pi: ExtensionAPI) {
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
       resnapshot: Type.Optional(Type.Boolean({ description: "Capture a fresh interactive snapshot after clicking", default: true })),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: {
+          element: "ref",
+          selector: "ref",
+          wait: "waitMode",
+          reSnapshot: "resnapshot",
+        },
+        booleanFields: ["resnapshot"],
+      });
+    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await clickBrowserElement(
@@ -252,6 +276,16 @@ export default function (pi: ExtensionAPI) {
       text: Type.String({ description: "Text to fill into the target input" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: {
+          element: "ref",
+          selector: "ref",
+          value: "text",
+          wait: "waitMode",
+        },
+      });
+    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await fillBrowserElement(
@@ -279,6 +313,16 @@ export default function (pi: ExtensionAPI) {
       option: Type.String({ description: "Visible option text or value to select" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: {
+          element: "ref",
+          selector: "ref",
+          value: "option",
+          wait: "waitMode",
+        },
+      });
+    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await selectBrowserOption(

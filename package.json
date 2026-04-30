@@ -1,5 +1,5 @@
 {
-  "name": "pi-browser-ops",
+  "name": "lachlan-aa-pi-extensions",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -23,7 +23,8 @@
     ]
   },
   "scripts": {
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
   "peerDependencies": {
     "@mariozechner/pi-agent-core": "*",

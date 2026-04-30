@@ -2,15 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import {
-  DEFAULT_MAX_BYTES,
-  DEFAULT_MAX_LINES,
-  formatSize,
-  truncateHead,
-} from "@mariozechner/pi-coding-agent";
 
 import type { BrowserState, WaitMode } from "./state.js";
 import { domainFromUrl, normalizeRef, sanitizeArtifactLabel } from "./state.js";
+import { formatToolText } from "./tool-output.js";
 
 export interface BrowserActionResult {
   summary: string;
@@ -127,7 +122,7 @@ export async function snapshotBrowserPage(
 
   return {
     summary: `Captured ${interactiveOnly ? "interactive " : ""}snapshot.`,
-    contentText: truncateForTool(snapshot, snapshotFile),
+    contentText: await truncateForTool(snapshot, snapshotFile),
     artifacts: [snapshotFile],
     diagnostics: {
       interactiveOnly,
@@ -234,6 +229,224 @@ export async function selectBrowserOption(
   };
 }
 
+export async function pressBrowserKey(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  key: string,
+  waitMode: WaitMode,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await runAgentBrowser(pi, ["press", key], ctx, 60_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = `press ${key}`;
+  state.lastError = undefined;
+
+  return {
+    summary: `Pressed ${key}.`,
+    diagnostics: {
+      key,
+      waitMode,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function scrollBrowserPage(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  direction: "up" | "down" | "left" | "right",
+  pixels: number | undefined,
+  waitMode: WaitMode,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  const args = ["scroll", direction];
+  if (typeof pixels === "number") args.push(String(pixels));
+  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = `scroll ${direction}${pixels ? ` ${pixels}` : ""}`;
+  state.lastError = undefined;
+
+  return {
+    summary: `Scrolled ${direction}${pixels ? ` ${pixels}px` : ""}.`,
+    diagnostics: {
+      direction,
+      pixels,
+      waitMode,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function waitInBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  target: string,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await runAgentBrowser(pi, ["wait", target], ctx, 120_000, { port: state.port });
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = `wait ${target}`;
+  state.lastError = undefined;
+
+  return {
+    summary: `Waited for ${target}.`,
+    diagnostics: {
+      target,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function navigateBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  action: "back" | "forward" | "reload",
+  waitMode: WaitMode,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await runAgentBrowser(pi, [action], ctx, 60_000, { port: state.port });
+  await waitForLoad(pi, ctx, waitMode, state.port);
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = action;
+  state.lastError = undefined;
+
+  return {
+    summary: `Browser ${action} complete.`,
+    diagnostics: {
+      action,
+      waitMode,
+      currentUrl: state.currentUrl,
+      currentDomain: state.currentDomain,
+    },
+  };
+}
+
+export async function getBrowserInfo(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  what: "text" | "html" | "value" | "attr" | "title" | "url" | "count" | "box" | "styles",
+  selector: string | undefined,
+  attrName: string | undefined,
+  label = "get",
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  const args = ["get", what];
+  if (what === "attr") {
+    if (!attrName) throw new Error("browser_get with what='attr' requires attrName.");
+    args.push(attrName);
+  }
+  if (selector) args.push(selector);
+
+  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await refreshCurrentUrl(pi, state, ctx);
+  const formatted = await formatToolText(output, { label: `browser-${label}`, mode: "head" });
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Read browser ${what}.`,
+    contentText: formatted.text,
+    artifacts: formatted.fullOutputFile ? [formatted.fullOutputFile] : undefined,
+    diagnostics: {
+      what,
+      selector,
+      attrName,
+      fullOutputFile: formatted.fullOutputFile,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function debugBrowserPage(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  kind: "console" | "errors" | "network-requests",
+  options: { clear?: boolean; filter?: string; label?: string },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  const args = kind === "network-requests" ? ["network", "requests"] : [kind];
+  if (options.clear) args.push("--clear");
+  if (kind === "network-requests" && options.filter) args.push("--filter", options.filter);
+
+  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await refreshCurrentUrl(pi, state, ctx);
+  const formatted = await formatToolText(output || "(no output)", {
+    label: `browser-${options.label ?? kind}`,
+    mode: "tail",
+  });
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Collected browser ${kind}.`,
+    contentText: formatted.text,
+    artifacts: formatted.fullOutputFile ? [formatted.fullOutputFile] : undefined,
+    diagnostics: {
+      kind,
+      clear: options.clear,
+      filter: options.filter,
+      fullOutputFile: formatted.fullOutputFile,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function runBrowserCommand(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  args: string[],
+  timeoutMs: number | undefined,
+  label = "command",
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  const safeArgs = normalizeBrowserCommandArgs(args);
+  const timeout = Math.min(Math.max(timeoutMs ?? 60_000, 1_000), 300_000);
+  const output = await runAgentBrowser(pi, safeArgs, ctx, timeout, { port: state.port });
+  await refreshCurrentUrl(pi, state, ctx);
+  const formatted = await formatToolText(output || "(no output)", {
+    label: `browser-${label}`,
+    mode: "head",
+  });
+
+  state.connected = true;
+  state.lastAction = safeArgs.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Ran agent-browser ${safeArgs.join(" ")}.`,
+    contentText: formatted.text,
+    artifacts: formatted.fullOutputFile ? [formatted.fullOutputFile] : undefined,
+    diagnostics: {
+      args: safeArgs,
+      timeoutMs: timeout,
+      fullOutputFile: formatted.fullOutputFile,
+      currentUrl: state.currentUrl,
+      currentDomain: state.currentDomain,
+    },
+  };
+}
+
 export async function evalInBrowser(
   pi: ExtensionAPI,
   state: BrowserState,
@@ -256,7 +469,7 @@ export async function evalInBrowser(
 
   return {
     summary: "Executed browser eval script.",
-    contentText: truncateForTool(output, evalFile),
+    contentText: await truncateForTool(output, evalFile),
     artifacts: [evalFile],
     diagnostics: {
       evalFile,
@@ -410,22 +623,32 @@ function artifactPath(state: BrowserState, label: string, extension: string): st
   return join(state.artifactDir, `${timestamp}-${sanitizeArtifactLabel(label)}.${extension}`);
 }
 
-function truncateForTool(content: string, artifactPathValue?: string): string {
-  const truncation = truncateHead(content, {
-    maxBytes: DEFAULT_MAX_BYTES,
-    maxLines: DEFAULT_MAX_LINES,
+async function truncateForTool(content: string, artifactPathValue?: string): Promise<string> {
+  const output = await formatToolText(content, {
+    label: "browser-output",
+    mode: "head",
+    fullOutputFile: artifactPathValue,
+  });
+  return output.text;
+}
+
+function normalizeBrowserCommandArgs(args: string[]): string[] {
+  if (!Array.isArray(args) || args.length === 0) {
+    throw new Error("browser_command requires at least one agent-browser argument.");
+  }
+
+  const safeArgs = args.map((arg) => {
+    if (typeof arg !== "string") throw new Error("browser_command args must be strings.");
+    const trimmed = arg.trim();
+    if (!trimmed) throw new Error("browser_command args cannot contain empty strings.");
+    return trimmed;
   });
 
-  const base = truncation.content || "(empty output)";
-  if (!truncation.truncated) return base;
+  if (safeArgs.includes("--cdp")) {
+    throw new Error("browser_command always uses the active browser CDP port; omit --cdp.");
+  }
 
-  const suffix = [
-    `[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines`,
-    `(${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
-    artifactPathValue ? `Full output saved to: ${artifactPathValue}]` : "]",
-  ].join(" ");
-
-  return `${base}\n\n${suffix}`;
+  return safeArgs;
 }
 
 function formatExecFailure(command: string, args: string[], result: CommandResult): string {

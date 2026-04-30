@@ -24,7 +24,7 @@ function sanitizeLabel(label: string): string {
 
 export async function formatToolText(
   content: string,
-  options: { label: string; mode?: "head" | "tail" },
+  options: { label: string; mode?: "head" | "tail"; fullOutputFile?: string },
 ): Promise<ToolTextResult> {
   const truncation = (options.mode ?? "head") === "tail"
     ? truncateTail(content, {
@@ -44,16 +44,18 @@ export async function formatToolText(
     };
   }
 
-  let fullOutputFile: string | undefined;
-  try {
-    await mkdir(TOOL_OUTPUT_DIR, { recursive: true });
-    fullOutputFile = path.join(
-      TOOL_OUTPUT_DIR,
-      `${new Date().toISOString().replace(/[:.]/g, "-")}-${sanitizeLabel(options.label)}.txt`,
-    );
-    await writeFile(fullOutputFile, content, "utf8");
-  } catch {
-    fullOutputFile = undefined;
+  let fullOutputFile = options.fullOutputFile;
+  if (!fullOutputFile) {
+    try {
+      await mkdir(TOOL_OUTPUT_DIR, { recursive: true });
+      fullOutputFile = path.join(
+        TOOL_OUTPUT_DIR,
+        `${new Date().toISOString().replace(/[:.]/g, "-")}-${sanitizeLabel(options.label)}.txt`,
+      );
+      await writeFile(fullOutputFile, content, "utf8");
+    } catch {
+      fullOutputFile = undefined;
+    }
   }
 
   const suffix = [

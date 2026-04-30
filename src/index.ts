@@ -9,9 +9,16 @@ import {
   connectBrowser,
   evalInBrowser,
   fillBrowserElement,
+  debugBrowserPage,
+  getBrowserInfo,
+  navigateBrowser,
   openBrowserPage,
+  pressBrowserKey,
+  runBrowserCommand,
+  scrollBrowserPage,
   selectBrowserOption,
   snapshotBrowserPage,
+  waitInBrowser,
   type BrowserActionResult,
 } from "./agent-browser.js";
 import {
@@ -27,6 +34,10 @@ import {
 import { prepareCompatArguments } from "./extension-utils.js";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
+const SCROLL_DIRECTION_SCHEMA = StringEnum(["up", "down", "left", "right"] as const);
+const NAV_ACTION_SCHEMA = StringEnum(["back", "forward", "reload"] as const);
+const BROWSER_GET_SCHEMA = StringEnum(["text", "html", "value", "attr", "title", "url", "count", "box", "styles"] as const);
+const BROWSER_DEBUG_SCHEMA = StringEnum(["console", "errors", "network-requests"] as const);
 const CUSTOM_STATE_TYPE = "browser-ops-state";
 
 export default function (pi: ExtensionAPI) {
@@ -333,6 +344,214 @@ export default function (pi: ExtensionAPI) {
           params.option,
           (params.waitMode ?? "none") as WaitMode,
         );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_press",
+    label: "Browser Press",
+    description: "Press a browser key such as Enter, Tab, Escape, or Control+a",
+    promptSnippet: "Press keyboard keys in the current browser page",
+    parameters: Type.Object({
+      key: Type.String({ description: "Key to press, e.g. Enter, Tab, Escape, Control+a" }),
+      waitMode: Type.Optional(WAIT_MODE_SCHEMA),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { value: "key" },
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await pressBrowserKey(pi, state, ctx, params.key, (params.waitMode ?? "none") as WaitMode);
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_scroll",
+    label: "Browser Scroll",
+    description: "Scroll the current page up, down, left, or right",
+    promptSnippet: "Scroll the browser page to reveal more content",
+    parameters: Type.Object({
+      direction: SCROLL_DIRECTION_SCHEMA,
+      pixels: Type.Optional(Type.Number({ description: "Optional number of pixels to scroll" })),
+      waitMode: Type.Optional(WAIT_MODE_SCHEMA),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        numberFields: ["pixels"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await scrollBrowserPage(
+          pi,
+          state,
+          ctx,
+          params.direction as "up" | "down" | "left" | "right",
+          params.pixels,
+          (params.waitMode ?? "none") as WaitMode,
+        );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_wait",
+    label: "Browser Wait",
+    description: "Wait for a selector/ref to appear or for a number of milliseconds",
+    promptSnippet: "Wait for browser page state before continuing automation",
+    parameters: Type.Object({
+      target: Type.String({ description: "Selector/ref like @e12, CSS selector, or milliseconds like 2000" }),
+    }),
+    prepareArguments(args) {
+      const prepared = prepareCompatArguments(args, {
+        aliases: { selector: "target", ref: "target", ms: "target" },
+      }) as { target?: unknown };
+      if (prepared && typeof prepared === "object" && typeof prepared.target === "number") {
+        return { ...prepared, target: String(prepared.target) } as { target: string };
+      }
+      return prepared as { target: string };
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await waitInBrowser(pi, state, ctx, params.target);
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_nav",
+    label: "Browser Navigation",
+    description: "Navigate browser history or reload the current page",
+    promptSnippet: "Go back, forward, or reload the browser page",
+    parameters: Type.Object({
+      action: NAV_ACTION_SCHEMA,
+      waitMode: Type.Optional(WAIT_MODE_SCHEMA),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await navigateBrowser(
+          pi,
+          state,
+          ctx,
+          params.action as "back" | "forward" | "reload",
+          (params.waitMode ?? "networkidle") as WaitMode,
+        );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_get",
+    label: "Browser Get",
+    description: "Read structured browser information such as text, html, value, attr, title, url, count, box, or styles",
+    promptSnippet: "Extract browser text, URL, title, element value, attributes, counts, boxes, or styles",
+    parameters: Type.Object({
+      what: BROWSER_GET_SCHEMA,
+      selector: Type.Optional(Type.String({ description: "Optional selector or @ref" })),
+      attrName: Type.Optional(Type.String({ description: "Attribute name when what is attr" })),
+      label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { ref: "selector", attribute: "attrName", name: "attrName" },
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await getBrowserInfo(
+          pi,
+          state,
+          ctx,
+          params.what as "text" | "html" | "value" | "attr" | "title" | "url" | "count" | "box" | "styles",
+          params.selector,
+          params.attrName,
+          params.label ?? "get",
+        );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_debug",
+    label: "Browser Debug",
+    description: "Read browser console logs, page errors, or network requests",
+    promptSnippet: "Inspect browser console logs, page errors, or network requests for diagnostics",
+    parameters: Type.Object({
+      kind: BROWSER_DEBUG_SCHEMA,
+      clear: Type.Optional(Type.Boolean({ description: "Clear entries after reading when supported" })),
+      filter: Type.Optional(Type.String({ description: "Optional network request filter pattern" })),
+      label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        booleanFields: ["clear"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await debugBrowserPage(
+          pi,
+          state,
+          ctx,
+          params.kind as "console" | "errors" | "network-requests",
+          { clear: params.clear, filter: params.filter, label: params.label },
+        );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_command",
+    label: "Browser Command",
+    description: "Run a raw agent-browser command using structured args. The active CDP port is prepended automatically; do not include --cdp.",
+    promptSnippet: "Use any agent-browser CLI feature not covered by typed browser tools",
+    parameters: Type.Object({
+      args: Type.Array(Type.String({ description: "agent-browser CLI argument" }), {
+        description: "Argument array, e.g. ['press', 'Enter'] or ['tab', 'list']",
+      }),
+      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds, clamped between 1000 and 300000" })),
+      label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        numberFields: ["timeoutMs"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await runBrowserCommand(pi, state, ctx, params.args, params.timeoutMs, params.label ?? "command");
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

@@ -1,6 +1,6 @@
-# pi-extensions
+# lachlan-aa-pi-extensions
 
-Custom [pi](https://github.com/badlogic/pi-mono) extensions and themes. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, an upstream monitor, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, an upstream monitor, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.68.1+`
 
@@ -58,7 +58,7 @@ If this repo is installed as a package, do not also copy `themes/synthwave-84.js
 For a one-off smoke test without auto-discovery:
 
 ```bash
-pi -e ./src/index.ts
+pi -e .
 ```
 
 ## What's included
@@ -96,9 +96,9 @@ The status bar shows a yellow dot with the process name when one is running, or 
 
 **Runtime prerequisite:** [`roo`](https://github.com/Jeecabs/roo) installed and on `PATH`.
 
-### pi-browser-ops
+### browser ops
 
-Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively.
+Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively. Common actions are typed tools; rarer `agent-browser` features are available through `browser_command` with structured args.
 
 **Commands:**
 
@@ -119,6 +119,13 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 | `browser_click` | Click an element |
 | `browser_fill` | Fill a form field |
 | `browser_select` | Select a dropdown option |
+| `browser_press` | Press browser keys like Enter, Tab, Escape, Control+a |
+| `browser_scroll` | Scroll the current page |
+| `browser_wait` | Wait for a selector/ref or milliseconds |
+| `browser_nav` | Go back, forward, or reload |
+| `browser_get` | Read text/html/value/attr/title/url/count/box/styles |
+| `browser_debug` | Read console logs, page errors, or network requests |
+| `browser_command` | Run raw `agent-browser` args with active CDP port prepended |
 | `browser_eval` | Evaluate JS in page context |
 | `browser_checkpoint` | Save current page state |
 

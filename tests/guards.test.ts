@@ -12,6 +12,16 @@ import {
   resolveBrowserPort,
   serializeBrowserState,
 } from "../src/state.ts";
+import {
+  buildPairSummary,
+  createPairState,
+  makeSessionNames,
+  mergePairState,
+  normalizePathInput,
+  normalizePrefix,
+  resolveStateForPrefix,
+  serializePairState,
+} from "../src/tmux-cx-pair/state.ts";
 
 test("assertReadOnly allows inspection queries", () => {
   assert.doesNotThrow(() => assertReadOnly("SELECT * FROM foo LIMIT 1"));
@@ -141,4 +151,59 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
     lastEvalFile: undefined,
     lastError: undefined,
   });
+});
+
+test("tmux cx pair helpers normalize names, paths, and persisted state", () => {
+  assert.equal(normalizePrefix(" Feature/API!! "), "feature-api");
+  assert.equal(normalizePrefix(undefined), undefined);
+  assert.throws(() => normalizePrefix("!!!"), /Prefix/);
+
+  assert.deepEqual(makeSessionNames("feature-api"), {
+    leftSession: "feature-api-left",
+    rightSession: "feature-api-right",
+  });
+
+  assert.equal(normalizePathInput("@src", "/tmp/repo"), "/tmp/repo/src");
+  assert.equal(normalizePathInput("/tmp/other", "/tmp/repo"), "/tmp/other");
+
+  const initial = createPairState("/tmp/repo");
+  assert.deepEqual(serializePairState(initial), { cwd: "/tmp/repo" });
+
+  const restored = mergePairState("/tmp/repo", {
+    cwd: "/work",
+    prefix: "feature-api",
+    leftSession: "feature-api-left",
+    rightSession: "feature-api-right",
+    goal: "ship it",
+    leftRole: "builder",
+    rightRole: "tester",
+  });
+
+  assert.equal(restored.cwd, "/work");
+  assert.equal(restored.leftRole, "builder");
+
+  const other = resolveStateForPrefix(restored, "Other Pair");
+  assert.equal(other.prefix, "other-pair");
+  assert.equal(other.leftSession, "other-pair-left");
+  assert.equal(other.goal, undefined);
+});
+
+test("tmux cx pair summary includes runtime health", () => {
+  const text = buildPairSummary(
+    {
+      cwd: "/tmp/repo",
+      prefix: "feature-api",
+      goal: "ship it",
+      leftRole: "builder",
+      rightRole: "tester",
+    },
+    {
+      left: { session: "feature-api-left", exists: true, currentCommand: "node", currentPath: "/tmp/repo" },
+      right: { session: "feature-api-right", exists: false },
+    },
+  );
+
+  assert.match(text, /prefix=feature-api/);
+  assert.match(text, /left: running/);
+  assert.match(text, /right: missing/);
 });

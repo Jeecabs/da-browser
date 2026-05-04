@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { prepareCompatArguments } from "../src/extension-utils.ts";
+import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
 import { shouldUseRooForCommand } from "../src/roo/command-policy.ts";
 import { assertReadOnly } from "../src/supabase/api.ts";
 import {
@@ -51,6 +52,41 @@ test("prepareCompatArguments applies aliases and primitive coercions", () => {
     lines: 42,
     enabled: true,
   });
+});
+
+test("fallow args normalize @ paths and append common flags", () => {
+  assert.equal(normalizeCliPath("@src/index.ts"), "src/index.ts");
+  assert.equal(normalizeCliPath("src/index.ts"), "src/index.ts");
+
+  const args: string[] = ["dead-code"];
+  appendCommonFallowArgs(args, {
+    root: "@/repo",
+    config: "@fallow.toml",
+    workspace: ["@scope/app", "pkg-*"],
+    changedSince: "origin/main",
+    production: true,
+    format: "json",
+    threads: 4,
+  });
+
+  assert.deepEqual(args, [
+    "dead-code",
+    "--root",
+    "/repo",
+    "--config",
+    "fallow.toml",
+    "--workspace",
+    "@scope/app",
+    "--workspace",
+    "pkg-*",
+    "--changed-since",
+    "origin/main",
+    "--format",
+    "json",
+    "--production",
+    "--threads",
+    "4",
+  ]);
 });
 
 test("shouldUseRooForCommand catches long-running local commands and leaves containers alone", () => {

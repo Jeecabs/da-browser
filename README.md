@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.68.1+`
 
@@ -76,6 +76,40 @@ A custom pi theme with a stronger Vice City / Miami neon palette and a restraine
 
 `/vicecity song ...` overrides the soundtrack. Exact autoplay works with a Spotify track URL or `spotify:track:...` URI; plain text opens Spotify search results in the local client.
 
+
+### Fallow
+
+Wraps the [Fallow](https://docs.fallow.tools) CLI into pi tools for codebase-level dead-code, duplication, health, and PR audit workflows. Tools default to `--format json` because Fallow recommends JSON for agent workflows.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `fallow_status` | Show Fallow version and resolved config status |
+| `fallow_overview` | Run combined dead-code, duplication, and health analysis |
+| `fallow_audit` | Audit changed files for PR quality gates |
+| `fallow_dead_code` | Find unused files, exports, deps, cycles, boundary violations, and stale suppressions |
+| `fallow_dupes` | Find duplicate code clone groups |
+| `fallow_health` | Analyze complexity, hotspots, refactor targets, score, and runtime coverage |
+| `fallow_fix` | Preview/apply automatic unused export/dependency cleanup; defaults to dry-run |
+| `fallow_list` | Inspect discovered files, entry points, plugins, and boundaries |
+| `fallow_explain` | Explain one Fallow issue type with guidance and docs links |
+
+**Command:**
+
+| Command | Description |
+|---------|-------------|
+| `/fallow status` | Show Fallow version |
+| `/fallow audit [base]` | Run `fallow audit --format json` |
+| `/fallow dead-code [base]` | Run `fallow dead-code --format json`, optionally changed since base |
+| `/fallow dupes` | Run duplication analysis |
+| `/fallow health` | Run health analysis |
+| `/fallow fix` | Preview automatic cleanup |
+| `/fallow fix --apply` | Apply automatic cleanup with `--yes` |
+| `/fallow list` | Show discovery info |
+| `/fallow config` | Show resolved config path |
+
+**Runtime prerequisite:** `npx` can fetch `fallow`, or set `FALLOW_BIN=/path/to/fallow` to use a local binary.
 
 ### roo
 

@@ -29,7 +29,7 @@ The secondary value of the package: giving the coding agent dependable tools tha
 _Avoid_: Autonomous operation, unrestricted automation
 
 **Integration Module**:
-A focused extension entrypoint for one workflow surface such as browser automation, Linear, Supabase, roo, GitHub review, Watchtower incoming-change monitoring, or Vice City chrome.
+A focused extension entrypoint for one workflow surface such as browser automation, Fallow codebase intelligence, Linear, Supabase, roo, GitHub review, Watchtower incoming-change monitoring, or Vice City chrome.
 _Avoid_: Plugin subsystem, framework layer
 
 **Free Browser Automation**:
@@ -51,6 +51,14 @@ _Avoid_: Free Linear automation, unsolicited issue changes
 **Read-Only Supabase Access**:
 Supabase database access limited to inspection queries so diagnosis can use production-like data without ad-hoc database mutation.
 _Avoid_: Database write automation, migration runner
+
+**Fallow Codebase Intelligence**:
+Deterministic project-graph analysis for dead code, duplication, complexity, health score, refactor targets, and PR audit gates, exposed through pi tools that default to agent-friendly JSON output.
+_Avoid_: Ad-hoc grep cleanup, LLM-only whole-codebase reasoning
+
+**Fallow Safe Cleanup**:
+A cleanup workflow where automatic fixes are previewed with dry-run before applying, and Fallow's limited auto-fix scope is respected: unused exports/dependencies are automatic, unused files and refactors remain normal code edits.
+_Avoid_: Blind deletion, broad formatter-style mutation
 
 **Strict Roo Gate**:
 A bash interception rule that forces likely long-running local processes through roo, accepting false positives to avoid hung agent turns.
@@ -112,6 +120,8 @@ _Avoid_: Secret management platform, transcript sanitizer
 - A **Trusted Team Workflow** may rely on hard-coded local defaults when they reduce friction.
 - **Workflow Compression** is prioritized over **Agent Leverage**, and **Agent Leverage** is prioritized over visual polish.
 - A **Pi Extension Package** is composed of **Integration Modules**, with shared helpers introduced only when repetition is concrete.
+- **Fallow Codebase Intelligence** complements agent file reading with deterministic whole-codebase analysis for cleanup, refactoring, and PR gates.
+- **Fallow Safe Cleanup** requires dry-run preview before automatic cleanup is applied; Fallow fix output should guide but not replace normal review for unused files and refactors.
 - **Free Browser Automation** is allowed for trusted dashboard workflows; browser mutations do not require confirmation prompts.
 - A **Curated Browser Wrapper** should cover common browser actions with typed tools and provide a raw escape hatch for rare agent-browser commands.
 - A **Browser Command Escape Hatch** uses an argument array, not a shell command string, and always targets the active browser CDP port.
@@ -125,6 +135,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - **Fun Chrome** stays isolated from core workflow tools and should not drive package architecture.
 - **Workflow State** is session/branch scoped, **Ambient Mode State** is session scoped, **External Truth** is rediscovered, and **Review Learnings** are global memory.
 - Long tool outputs should become **Truncated Tool Output** with visible full-output artifact paths.
+- Fallow tools should default to JSON output for agent workflows and save/truncate large reports rather than forcing human parsing.
 - **Human Commands** should trigger user-facing workflows; **Agent Tools** should expose workflow primitives the agent can safely execute.
 - Testing should stay limited to **Light Guard Tests** for pure helpers such as SQL read-only checks, roo command detection, argument compatibility, and state serialization.
 - A **Recoverable Prerequisite Failure** should explain the missing prerequisite and the next command or setup step when possible.

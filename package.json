@@ -15,7 +15,7 @@
       "./src/linear/index.ts",
       "./src/github/index.ts",
       "./src/roo/index.ts",
-      "./src/upstream.ts",
+      "./src/watchtower.ts",
       "./src/vicecity/index.ts"
     ],
     "themes": [

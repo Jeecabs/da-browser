@@ -29,7 +29,7 @@ The secondary value of the package: giving the coding agent dependable tools tha
 _Avoid_: Autonomous operation, unrestricted automation
 
 **Integration Module**:
-A focused extension entrypoint for one workflow surface such as browser automation, Linear, Supabase, roo, GitHub review, upstream monitoring, or Vice City chrome.
+A focused extension entrypoint for one workflow surface such as browser automation, Linear, Supabase, roo, GitHub review, Watchtower incoming-change monitoring, or Vice City chrome.
 _Avoid_: Plugin subsystem, framework layer
 
 **Free Browser Automation**:
@@ -60,9 +60,9 @@ _Avoid_: Best-effort process guidance, permissive bash for dev servers
 A small append-only rule captured from PR feedback so future review or fix sessions avoid repeating non-obvious mistakes.
 _Avoid_: Knowledge base article, repo documentation
 
-**Toggle Upstream Monitor**:
-An opt-in git monitor that fetches and displays incoming upstream changes only after the user enables it for the session.
-_Avoid_: Always-on upstream monitor, background git fetcher
+**Watchtower Monitor**:
+An opt-in git monitor that fetches and displays incoming target-branch changes only after the user enables it for the session.
+_Avoid_: Always-on incoming-change monitor, background git fetcher
 
 **Fun Chrome**:
 Optional visual and audio ambience that makes pi feel personal without shaping core tool architecture.
@@ -73,7 +73,7 @@ Session- or branch-scoped state that affects an agent's next action, such as the
 _Avoid_: Global preference, external source of truth
 
 **Ambient Mode State**:
-Session-scoped UI or monitoring preference such as Vice City mode or upstream monitor enabled state.
+Session-scoped UI or monitoring preference such as Vice City mode or Watchtower enabled state.
 _Avoid_: Agent reasoning state, global package config
 
 **External Truth**:
@@ -121,7 +121,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - The Supabase read-only boundary is pragmatic: lexical DML/DDL blocking is acceptable for the Trusted Machine, even though PostgreSQL side-effect functions cannot be perfectly detected.
 - A **Strict Roo Gate** blocks likely long-running bash commands; false positives are acceptable because roo is safer for inspectable processes.
 - **Review Learnings** stay append-only and are injected only into explicit review/learning workflows.
-- The **Toggle Upstream Monitor** remains user-enabled rather than always-on.
+- The **Watchtower Monitor** remains user-enabled rather than always-on.
 - **Fun Chrome** stays isolated from core workflow tools and should not drive package architecture.
 - **Workflow State** is session/branch scoped, **Ambient Mode State** is session scoped, **External Truth** is rediscovered, and **Review Learnings** are global memory.
 - Long tool outputs should become **Truncated Tool Output** with visible full-output artifact paths.

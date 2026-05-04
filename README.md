@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, an upstream monitor, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.68.1+`
 
@@ -96,6 +96,26 @@ The status bar shows a yellow dot with the process name when one is running, or 
 
 **Runtime prerequisite:** [`roo`](https://github.com/Jeecabs/roo) installed and on `PATH`.
 
+### Watchtower
+
+Opt-in git monitor for incoming target-branch changes and dirty-file conflict risk.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/watchtower` | Toggle Watchtower on/off |
+| `/watchtower on` | Enable polling |
+| `/watchtower off` | Disable polling |
+| `/watchtower status` | Show branch, target, dirty files, threat, and fetch state |
+| `/watchtower refresh` | Fetch and rescan now |
+| `/watchtower open` | Open expanded overlay |
+| `/watchtower target [ref]` | Show or set watched target branch |
+| `/watchtower target auto` | Clear manual target and auto-detect |
+| `/upstream` | Compatibility alias for `/watchtower` |
+
+`/watchtower` includes argument autocomplete, including branch/ref suggestions after `target `.
+
 ### browser ops
 
 Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively. Common actions are typed tools; rarer `agent-browser` features are available through `browser_command` with structured args.
@@ -179,4 +199,4 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-Run `/reload` in pi to pick up changes. See the [upstream extension docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md) for the full API reference.
+Run `/reload` in pi to pick up changes. See the [pi extension docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md) for the full API reference.

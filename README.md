@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.68.1+`
 
@@ -129,6 +129,26 @@ The extension also teaches pi to prefer roo for long-running or inspectable comm
 The status bar shows a yellow dot with the process name when one is running, or a count when multiple are active.
 
 **Runtime prerequisite:** [`roo`](https://github.com/Jeecabs/roo) installed and on `PATH`.
+
+### tmux cx pair
+
+Human-driven two-agent cockpit for local `cx` sessions. The agent can launch a left/right pair in tmux, capture raw pane output, relay targeted messages, inspect health, and stop both sessions.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `tmux_cx_pair_bootstrap` | Create `<prefix>-left` and `<prefix>-right`, launch `cx`, and send role prompts |
+| `tmux_cx_pair_status` | Show tracked or prefixed pair health |
+| `tmux_cx_pair_capture` | Capture recent raw output from left, right, or both |
+| `tmux_cx_pair_send` | Send a targeted message to left, right, or both |
+| `tmux_cx_pair_stop` | Hard-kill both pair sessions |
+
+The status bar shows the active prefix and live session count, e.g. `cx feature-x 2/2`.
+
+**Runtime prerequisites:** `tmux` installed and the local `cx` alias available in tmux shells.
+
+Design notes: [`docs/tmux-cx-pair.md`](docs/tmux-cx-pair.md).
 
 ### Watchtower
 

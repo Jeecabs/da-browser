@@ -152,24 +152,24 @@ Design notes: [`docs/tmux-cx-pair.md`](docs/tmux-cx-pair.md).
 
 ### Idea Board
 
-Shared agent/human workbench state. Pi gets tools for writing concise renderable work products to JSON, suitable for a separate watcher/web UI such as `vercel-labs/json-render`.
+Shared agent/human workbench state. Pi gets tools for writing concise renderable work products to JSON, and a bundled local viewer renders the board live from project (`.pi/idea-board/state.json`) or global (`~/.pi/agent/idea-board/state.json`) scope.
 
-**Global setup:**
+**Command:**
 
 ```text
-/idea-board setup global
+/idea-board [status|open|reset] [project|global]
 ```
-
-Creates `~/.pi/agent/idea-board/state.json`, so any project/session can target the same board. Project-local setup uses `/idea-board setup project` and writes `.pi/idea-board/state.json`.
 
 **Tools (callable by the LLM):**
 
 | Tool | Description |
 |------|-------------|
-| `idea_board_replace` | Replace the board with a structured artifact: title, mode, thesis, sections, focus |
-| `idea_board_append` | Append one item to a section, creating board/section when needed |
+| `idea_board_set` | Replace the board with a JSON-render component spec |
+| `idea_board_append` | Append one component to an existing parent id, creating a default board if needed |
+| `idea_board_patch` | Apply targeted set/remove/set-children/set-meta operations |
+| `idea_board_open` | Return the local viewer URL |
 
-The tools are explicitly for work products — hypotheses, options, tradeoffs, decisions, questions, todos, handoff notes — not private chain-of-thought.
+The tools are explicitly for work products — hypotheses, options, tradeoffs, decisions, questions, todos, handoff notes — not private chain-of-thought. Specs are validated before write: root must exist, root must be `Board`, children must reference existing ids, and cycles are rejected.
 
 ### Watchtower
 

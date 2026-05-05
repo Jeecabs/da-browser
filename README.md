@@ -159,6 +159,31 @@ One-off visual thinking should use real HTML, not fixed board primitives. Agents
 | Tool | Description |
 |------|-------------|
 | `html_artifact_open` | Open an HTML artifact in macOS default browser or Arc and return its `file://` URL |
+| `html_artifact_publish` | Upload an HTML artifact to Cloudflare R2 with Wrangler and return its public `r2.dev` URL |
+
+**Command:**
+
+| Command | Description |
+|---------|-------------|
+| `/artifact status` | Check Wrangler/R2 artifact publishing config without printing secrets |
+
+For hosted artifacts, install and authenticate Wrangler:
+
+```bash
+npm i -g wrangler
+wrangler login
+```
+
+Enable public `r2.dev` access for the `pi-artifacts` R2 bucket, then configure the public base URL:
+
+```bash
+mkdir -p ~/.pi/agent/config
+cat > ~/.pi/agent/config/r2-artifacts.env <<'EOF'
+R2_PUBLIC_BASE_URL=https://pub-xxxx.r2.dev
+EOF
+```
+
+Hard-coded trusted-machine defaults: account `1328473bd418a905a314abc4181a390a`, bucket `pi-artifacts`. Override with `CLOUDFLARE_ACCOUNT_ID`, `R2_BUCKET`, or `R2_PUBLIC_BASE_URL` environment variables if needed.
 
 Guidance loaded with the tool:
 

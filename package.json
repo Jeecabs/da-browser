@@ -27,7 +27,10 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/*.test.ts"
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "viewer:install": "cd src/idea-board/viewer && pnpm install",
+    "viewer:build": "cd src/idea-board/viewer && pnpm build",
+    "viewer:dev": "cd src/idea-board/viewer && pnpm dev"
   },
   "peerDependencies": {
     "@mariozechner/pi-agent-core": "*",

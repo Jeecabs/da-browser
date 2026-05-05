@@ -17,7 +17,7 @@
       "./src/fallow/index.ts",
       "./src/roo/index.ts",
       "./src/tmux-cx-pair/index.ts",
-      "./src/idea-board/index.ts",
+      "./src/html-artifacts/index.ts",
       "./src/watchtower.ts",
       "./src/vicecity/index.ts"
     ],
@@ -27,10 +27,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/*.test.ts",
-    "viewer:install": "cd src/idea-board/viewer && pnpm install",
-    "viewer:build": "cd src/idea-board/viewer && pnpm build",
-    "viewer:dev": "cd src/idea-board/viewer && pnpm dev"
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
   "peerDependencies": {
     "@mariozechner/pi-agent-core": "*",

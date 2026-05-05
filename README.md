@@ -158,7 +158,7 @@ One-off visual thinking should use real HTML, not fixed board primitives. Agents
 
 | Tool | Description |
 |------|-------------|
-| `html_artifact_open` | Validate an HTML artifact path and return its `file://` URL |
+| `html_artifact_open` | Open an HTML artifact in macOS default browser or Arc and return its `file://` URL |
 
 Guidance loaded with the tool:
 
@@ -166,7 +166,7 @@ Guidance loaded with the tool:
 - Use normal HTML/CSS/JS/SVG/Canvas freely. Match the medium to the idea: static layout, SVG diagram, canvas sim, or tiny interactive app.
 - Follow frontend-design standards: clear aesthetic direction, distinctive typography, cohesive palette, responsive layout, accessible contrast, polished spacing, and intentional visual hierarchy.
 - Avoid generic AI UI: no default font stacks, timid palettes, predictable card walls, or purple-gradient boilerplate.
-- After writing, open via `browser_open(file:///...)` and verify with `browser_checkpoint` when visual fidelity matters.
+- After writing, call `html_artifact_open` to open it directly. Use `app: "arc"` for Arc or omit for macOS default browser. Verify with `browser_checkpoint` when visual fidelity matters.
 
 ### Watchtower
 

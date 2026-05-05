@@ -17,6 +17,7 @@
       "./src/fallow/index.ts",
       "./src/roo/index.ts",
       "./src/tmux-cx-pair/index.ts",
+      "./src/idea-board/index.ts",
       "./src/watchtower.ts",
       "./src/vicecity/index.ts"
     ],

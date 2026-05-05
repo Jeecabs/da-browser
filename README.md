@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, Idea Board shared workbench state, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.68.1+`
 
@@ -149,6 +149,27 @@ The status bar shows the active prefix and live session count, e.g. `cx feature-
 **Runtime prerequisites:** `tmux` installed and the local `cx` alias available in tmux shells.
 
 Design notes: [`docs/tmux-cx-pair.md`](docs/tmux-cx-pair.md).
+
+### Idea Board
+
+Shared agent/human workbench state. Pi gets tools for writing concise renderable work products to JSON, suitable for a separate watcher/web UI such as `vercel-labs/json-render`.
+
+**Global setup:**
+
+```text
+/idea-board setup global
+```
+
+Creates `~/.pi/agent/idea-board/state.json`, so any project/session can target the same board. Project-local setup uses `/idea-board setup project` and writes `.pi/idea-board/state.json`.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `idea_board_replace` | Replace the board with a structured artifact: title, mode, thesis, sections, focus |
+| `idea_board_append` | Append one item to a section, creating board/section when needed |
+
+The tools are explicitly for work products — hypotheses, options, tradeoffs, decisions, questions, todos, handoff notes — not private chain-of-thought.
 
 ### Watchtower
 

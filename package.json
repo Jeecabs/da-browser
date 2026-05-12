@@ -23,6 +23,12 @@
     ],
     "themes": [
       "./themes"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
     ]
   },
   "scripts": {

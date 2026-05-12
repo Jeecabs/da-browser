@@ -1,8 +1,8 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, HTML artifact guidance, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
-**Recommended pi version:** `0.68.1+`
+**Recommended pi version:** `0.73.1+`
 
 ## Install
 
@@ -149,6 +149,23 @@ The status bar shows the active prefix and live session count, e.g. `cx feature-
 **Runtime prerequisites:** `tmux` installed and the local `cx` alias available in tmux shells.
 
 Design notes: [`docs/tmux-cx-pair.md`](docs/tmux-cx-pair.md).
+
+### Excalidraw
+
+Wraps [`excalidraw-cli`](https://github.com/ahmadawais/excalidraw-cli) so agents can create hand-drawn `.excalidraw` diagrams, export them to excalidraw.com, inspect the element reference, and manage CLI checkpoints.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `excalidraw_create` | Create a `.excalidraw` diagram from inline JSON, a JSON file, or an existing `.excalidraw` file |
+| `excalidraw_export` | Upload a `.excalidraw` file to excalidraw.com and return the share URL |
+| `excalidraw_reference` | Show the CLI element format reference |
+| `excalidraw_checkpoint` | List, save, load, or remove diagram checkpoints |
+
+**Command:** `/excalidraw ref | create <input> <output> | export <file> | cp <args>`
+
+**Runtime prerequisite:** `npx` can fetch `excalidraw-cli`, or set `EXCALIDRAW_BIN=/path/to/excalidraw` to use a local/global binary.
 
 ### HTML Artifacts
 

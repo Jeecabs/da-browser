@@ -206,8 +206,8 @@ Guidance loaded with the tool:
 
 - Prefer standalone HTML artifacts for diagrams, explainer boards, PRD sketches, architecture maps, and other visual work.
 - Use normal HTML/CSS/JS/SVG/Canvas freely. Match the medium to the idea: static layout, SVG diagram, canvas sim, or tiny interactive app.
-- Follow frontend-design standards: clear aesthetic direction, distinctive typography, cohesive palette, responsive layout, accessible contrast, polished spacing, and intentional visual hierarchy.
-- Avoid generic AI UI: no default font stacks, timid palettes, predictable card walls, or purple-gradient boilerplate.
+- Cover the design basics: readable typography, a consistent palette, responsive layout, accessible contrast, even spacing, and a clear visual hierarchy.
+- Style to fit the artifact's purpose: favor restraint, use system fonts and simple palettes freely, and keep any effects in service of comprehension.
 - After writing, call `html_artifact_open` to open it directly. Use `app: "arc"` for Arc or omit for macOS default browser. Verify with `browser_checkpoint` when visual fidelity matters.
 
 ### Watchtower

@@ -9,6 +9,7 @@ import {
   connectBrowser,
   evalInBrowser,
   fillBrowserElement,
+  findBrowserElement,
   debugBrowserPage,
   getBrowserInfo,
   navigateBrowser,
@@ -38,7 +39,28 @@ const SCROLL_DIRECTION_SCHEMA = StringEnum(["up", "down", "left", "right"] as co
 const NAV_ACTION_SCHEMA = StringEnum(["back", "forward", "reload"] as const);
 const BROWSER_GET_SCHEMA = StringEnum(["text", "html", "value", "attr", "title", "url", "count", "box", "styles"] as const);
 const BROWSER_DEBUG_SCHEMA = StringEnum(["console", "errors", "network-requests"] as const);
+const BROWSER_FIND_LOCATOR_SCHEMA = StringEnum([
+  "role",
+  "text",
+  "label",
+  "placeholder",
+  "alt",
+  "title",
+  "testid",
+  "first",
+  "last",
+  "nth",
+] as const);
 const CUSTOM_STATE_TYPE = "browser-ops-state";
+
+const BROWSER_GUIDELINES = [
+  "Browser element refs (@eN) come from the most recent snapshot and become stale after any DOM mutation. Re-snapshot or use browser_find after navigation, click, or fill.",
+  "Prefer browser_find over snapshot+click when the target is described by role, label, text, placeholder, alt, title, or testid — it avoids a snapshot round-trip.",
+  "For heavy SPAs, scope browser_snapshot with selector (CSS subtree) or depth to keep context small. interactiveOnly already filters non-interactive nodes by default.",
+  "After browser_open, browser_nav, or any submission, the page is mid-load. Rely on waitMode='networkidle' (default) or follow up with browser_wait on a known selector for slow apps.",
+  "Use browser_checkpoint after important mutations to save a screenshot + interactive snapshot pair for verification and recovery.",
+  "The connected browser is the user's authenticated Arc session — do not perform mutations the user did not ask for.",
+];
 
 export default function (pi: ExtensionAPI) {
   let state = createBrowserState(process.cwd());
@@ -130,7 +152,7 @@ export default function (pi: ExtensionAPI) {
           state.lastError = undefined;
           refreshUi(ctx);
           persistCommandState();
-          ctx.ui.notify("Removed Arc auth export and marked browser as disconnected.", "info");
+          ctx.ui.notify(`Marked browser as disconnected. Artifact files remain in ${state.artifactDir}.`, "info");
           return;
         }
 
@@ -146,6 +168,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Status",
     description: "Show the current browser automation state and artifact locations",
     promptSnippet: "Inspect the browser automation state before continuing a multi-step dashboard task",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       refreshUi(ctx);
@@ -164,6 +187,7 @@ export default function (pi: ExtensionAPI) {
     description: "Connect agent-browser to Arc or Chromium auth context using a smart-default remote debugging port",
     promptSnippet: "Connect browser automation to the user's existing authenticated browser session",
     promptGuidelines: [
+      ...BROWSER_GUIDELINES,
       "Use browser_connect before dashboard automation when browser auth has not been initialized in the current session.",
     ],
     parameters: Type.Object({
@@ -192,6 +216,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Open",
     description: "Open a URL in agent-browser and optionally wait for the page to settle",
     promptSnippet: "Open a dashboard or app URL before interacting with it",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       url: Type.String({ description: "Absolute URL to open" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
@@ -210,16 +235,21 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "browser_snapshot",
     label: "Browser Snapshot",
-    description: "Capture a page snapshot, defaulting to interactive elements only",
+    description: "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs.",
     promptSnippet: "Inspect the current page and collect fresh element refs before clicking or filling",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       interactiveOnly: Type.Optional(Type.Boolean({ description: "Capture only interactive elements", default: true })),
+      compact: Type.Optional(Type.Boolean({ description: "Remove empty structural elements" })),
+      depth: Type.Optional(Type.Number({ description: "Limit accessibility tree depth" })),
+      selector: Type.Optional(Type.String({ description: "Scope snapshot to a CSS selector subtree" })),
       label: Type.Optional(Type.String({ description: "Optional artifact label" })),
     }),
     prepareArguments(args) {
       return prepareCompatArguments(args, {
-        aliases: { interactive: "interactiveOnly" },
-        booleanFields: ["interactiveOnly"],
+        aliases: { interactive: "interactiveOnly", scope: "selector", css: "selector", maxDepth: "depth" },
+        booleanFields: ["interactiveOnly", "compact"],
+        numberFields: ["depth"],
       });
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -230,6 +260,7 @@ export default function (pi: ExtensionAPI) {
           ctx,
           params.interactiveOnly ?? true,
           params.label ?? "snapshot",
+          { compact: params.compact, depth: params.depth, selector: params.selector },
         );
         refreshUi(ctx);
         return toolResponse(result);
@@ -244,6 +275,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Click",
     description: "Click an interactive element by its @ref and optionally resnapshot afterward",
     promptSnippet: "Click a specific interactive element ref from the latest browser snapshot",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       ref: Type.String({ description: "Interactive element ref like @e12 or e12" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
@@ -279,9 +311,63 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "browser_find",
+    label: "Browser Find",
+    description:
+      "Locate elements by role/text/label/placeholder/alt/title/testid (or first/last/nth) and optionally act on them in one step. Replaces snapshot+click when the target is semantically describable.",
+    promptSnippet:
+      "Find an element by semantic locator (role, label, text, etc.) and click/fill/type/hover/focus/check/uncheck it in one call",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      locator: BROWSER_FIND_LOCATOR_SCHEMA,
+      value: Type.String({
+        description: "Role/text/label/placeholder/alt/title/testid value, CSS selector for first/last, or index for nth",
+      }),
+      action: Type.Optional(
+        Type.String({
+          description:
+            "Action to perform on the match: click, fill, type, hover, focus, check, uncheck. Omit to just locate and return matched refs.",
+        }),
+      ),
+      text: Type.Optional(Type.String({ description: "Action argument for fill/type" })),
+      name: Type.Optional(Type.String({ description: "Accessible-name filter (role locator only)" })),
+      exact: Type.Optional(Type.Boolean({ description: "Require exact text/name match" })),
+      waitMode: Type.Optional(WAIT_MODE_SCHEMA),
+      resnapshot: Type.Optional(
+        Type.Boolean({ description: "Capture a fresh interactive snapshot after a mutating action", default: true }),
+      ),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { role: "value", element: "value" },
+        booleanFields: ["exact", "resnapshot"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await findBrowserElement(pi, state, ctx, {
+          locator: params.locator as string,
+          value: params.value,
+          action: params.action,
+          text: params.text,
+          name: params.name,
+          exact: params.exact,
+          waitMode: params.waitMode as WaitMode | undefined,
+          resnapshot: params.resnapshot,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
     name: "browser_fill",
     label: "Browser Fill",
     description: "Fill a browser input element by @ref",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       ref: Type.String({ description: "Interactive element ref like @e12 or e12" }),
       text: Type.String({ description: "Text to fill into the target input" }),
@@ -319,6 +405,7 @@ export default function (pi: ExtensionAPI) {
     name: "browser_select",
     label: "Browser Select",
     description: "Select a value on a browser control by @ref",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       ref: Type.String({ description: "Interactive element ref like @e12 or e12" }),
       option: Type.String({ description: "Visible option text or value to select" }),
@@ -357,6 +444,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Press",
     description: "Press a browser key such as Enter, Tab, Escape, or Control+a",
     promptSnippet: "Press keyboard keys in the current browser page",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       key: Type.String({ description: "Key to press, e.g. Enter, Tab, Escape, Control+a" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
@@ -382,6 +470,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Scroll",
     description: "Scroll the current page up, down, left, or right",
     promptSnippet: "Scroll the browser page to reveal more content",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       direction: SCROLL_DIRECTION_SCHEMA,
       pixels: Type.Optional(Type.Number({ description: "Optional number of pixels to scroll" })),
@@ -415,6 +504,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Wait",
     description: "Wait for a selector/ref to appear or for a number of milliseconds",
     promptSnippet: "Wait for browser page state before continuing automation",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       target: Type.String({ description: "Selector/ref like @e12, CSS selector, or milliseconds like 2000" }),
     }),
@@ -443,6 +533,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Navigation",
     description: "Navigate browser history or reload the current page",
     promptSnippet: "Go back, forward, or reload the browser page",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       action: NAV_ACTION_SCHEMA,
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
@@ -469,6 +560,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Get",
     description: "Read structured browser information such as text, html, value, attr, title, url, count, box, or styles",
     promptSnippet: "Extract browser text, URL, title, element value, attributes, counts, boxes, or styles",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       what: BROWSER_GET_SCHEMA,
       selector: Type.Optional(Type.String({ description: "Optional selector or @ref" })),
@@ -504,6 +596,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Debug",
     description: "Read browser console logs, page errors, or network requests",
     promptSnippet: "Inspect browser console logs, page errors, or network requests for diagnostics",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       kind: BROWSER_DEBUG_SCHEMA,
       clear: Type.Optional(Type.Boolean({ description: "Clear entries after reading when supported" })),
@@ -537,6 +630,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Command",
     description: "Run a raw agent-browser command using structured args. The active CDP port is prepended automatically; do not include --cdp.",
     promptSnippet: "Use any agent-browser CLI feature not covered by typed browser tools",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       args: Type.Array(Type.String({ description: "agent-browser CLI argument" }), {
         description: "Argument array, e.g. ['press', 'Enter'] or ['tab', 'list']",
@@ -564,6 +658,7 @@ export default function (pi: ExtensionAPI) {
     name: "browser_eval",
     label: "Browser Eval",
     description: "Run JavaScript in the current page for structured extraction or page diagnostics",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       script: Type.String({ description: "JavaScript source to evaluate in the current page" }),
       label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),
@@ -584,6 +679,7 @@ export default function (pi: ExtensionAPI) {
     label: "Browser Checkpoint",
     description: "Save a screenshot plus an interactive snapshot for verification and recovery",
     promptSnippet: "Capture a verification checkpoint after an important browser mutation",
+    promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
       label: Type.String({ description: "Short label describing what is being verified" }),
     }),

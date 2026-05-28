@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildFindArgs, buildSnapshotArgs } from "../src/agent-browser-args.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
 import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
 import { shouldUseRooForCommand } from "../src/roo/command-policy.ts";
@@ -121,6 +122,70 @@ test("shouldUseRooForCommand catches long-running local commands and leaves cont
   ]) {
     assert.equal(shouldUseRooForCommand(command), false, command);
   }
+});
+
+test("buildFindArgs composes locator, action, name, and exact flags", () => {
+  assert.deepEqual(
+    buildFindArgs({ locator: "role", value: "button", action: "click", name: "Save" }),
+    ["find", "role", "button", "click", "--name", "Save"],
+  );
+
+  assert.deepEqual(
+    buildFindArgs({ locator: "text", value: "Continue", action: "click", exact: true }),
+    ["find", "text", "Continue", "click", "--exact"],
+  );
+
+  assert.deepEqual(
+    buildFindArgs({ locator: "role", value: "textbox", action: "fill", text: "hello", name: "Email" }),
+    ["find", "role", "textbox", "fill", "hello", "--name", "Email"],
+  );
+
+  assert.deepEqual(buildFindArgs({ locator: "testid", value: "submit-btn" }), [
+    "find",
+    "testid",
+    "submit-btn",
+  ]);
+});
+
+test("buildSnapshotArgs composes -i, -c, -d, and -s flags", () => {
+  assert.deepEqual(
+    buildSnapshotArgs({ interactiveOnly: true, compact: true, depth: 3, selector: "main" }),
+    ["snapshot", "-i", "-c", "-d", "3", "-s", "main"],
+  );
+
+  assert.deepEqual(buildSnapshotArgs({ interactiveOnly: true }), ["snapshot", "-i"]);
+  assert.deepEqual(buildSnapshotArgs({}), ["snapshot"]);
+  assert.deepEqual(buildSnapshotArgs({ depth: 0 }), ["snapshot", "-d", "0"]);
+});
+
+test("prepareCompatArguments for browser_find aliases role/element and coerces exact", () => {
+  const aliased = prepareCompatArguments(
+    { role: "button" },
+    {
+      aliases: { role: "value", element: "value" },
+      booleanFields: ["exact", "resnapshot"],
+    },
+  );
+  assert.equal((aliased as { value?: string }).value, "button");
+
+  const bothKeys = prepareCompatArguments(
+    { role: "button", value: "link" },
+    {
+      aliases: { role: "value", element: "value" },
+      booleanFields: ["exact", "resnapshot"],
+    },
+  );
+  assert.equal((bothKeys as { value?: string }).value, "link");
+
+  const coerced = prepareCompatArguments(
+    { exact: "true", resnapshot: "false" },
+    {
+      aliases: { role: "value", element: "value" },
+      booleanFields: ["exact", "resnapshot"],
+    },
+  );
+  assert.equal((coerced as { exact?: boolean }).exact, true);
+  assert.equal((coerced as { resnapshot?: boolean }).resnapshot, false);
 });
 
 test("browser state helpers normalize refs, ports, and persisted state", () => {

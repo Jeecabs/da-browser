@@ -7,20 +7,29 @@ import {
   cleanupBrowserArtifacts,
   clickBrowserElement,
   connectBrowser,
+  emulateBrowser,
   evalInBrowser,
   fillBrowserElement,
   findBrowserElement,
   debugBrowserPage,
   getBrowserInfo,
+  isBrowserState,
   navigateBrowser,
   openBrowserPage,
   pressBrowserKey,
+  recordBrowser,
   runBrowserCommand,
   scrollBrowserPage,
   selectBrowserOption,
   snapshotBrowserPage,
+  tabBrowser,
+  traceBrowser,
   waitInBrowser,
   type BrowserActionResult,
+  type CaptureAction,
+  type EmulateSetting,
+  type IsCheck,
+  type TabAction,
 } from "./agent-browser.js";
 import {
   browserStatusText,
@@ -51,6 +60,11 @@ const BROWSER_FIND_LOCATOR_SCHEMA = StringEnum([
   "last",
   "nth",
 ] as const);
+const BROWSER_TAB_ACTION_SCHEMA = StringEnum(["list", "new", "close", "switch"] as const);
+const BROWSER_IS_CHECK_SCHEMA = StringEnum(["visible", "enabled", "checked"] as const);
+const BROWSER_EMULATE_SETTING_SCHEMA = StringEnum(["viewport", "device", "geo", "offline", "media"] as const);
+const BROWSER_EMULATE_MEDIA_SCHEMA = StringEnum(["dark", "light"] as const);
+const BROWSER_CAPTURE_ACTION_SCHEMA = StringEnum(["start", "stop"] as const);
 const CUSTOM_STATE_TYPE = "browser-ops-state";
 
 const BROWSER_GUIDELINES = [
@@ -60,6 +74,8 @@ const BROWSER_GUIDELINES = [
   "After browser_open, browser_nav, or any submission, the page is mid-load. Rely on waitMode='networkidle' (default) or follow up with browser_wait on a known selector for slow apps.",
   "Use browser_checkpoint after important mutations to save a screenshot + interactive snapshot pair for verification and recovery.",
   "The connected browser is the user's authenticated Arc session — do not perform mutations the user did not ask for.",
+  "browser_record start spawns a fresh browser context (cookies and localStorage preserved); re-snapshot before the next action.",
+  "Use browser_is for boolean asserts (visible/enabled/checked) instead of regex-matching browser_get text.",
 ];
 
 export default function (pi: ExtensionAPI) {
@@ -666,6 +682,160 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await evalInBrowser(pi, state, ctx, params.script, params.label ?? "eval");
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_tab",
+    label: "Browser Tab",
+    description: "List, open, close, or switch browser tabs (use for OAuth pop-ups and multi-tab flows)",
+    promptSnippet: "Manage browser tabs when an action opens a popup or you need to coordinate across tabs",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      action: BROWSER_TAB_ACTION_SCHEMA,
+      url: Type.Optional(Type.String({ description: "URL to open when action is 'new'" })),
+      index: Type.Optional(Type.Number({ description: "Tab index for 'close' (optional) or 'switch' (required)" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { tab: "index" },
+        numberFields: ["index"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await tabBrowser(pi, state, ctx, {
+          action: params.action as TabAction,
+          url: params.url,
+          index: params.index,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_is",
+    label: "Browser Is",
+    description: "Boolean assertions for visible/enabled/checked — returns structured details.result instead of text to regex-match",
+    promptSnippet: "Assert that a selector is visible/enabled/checked without parsing browser_get text",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      check: BROWSER_IS_CHECK_SCHEMA,
+      selector: Type.String({ description: "CSS selector or @ref to test" }),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { ref: "selector" },
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await isBrowserState(pi, state, ctx, {
+          check: params.check as IsCheck,
+          selector: params.selector,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_emulate",
+    label: "Browser Emulate",
+    description: "Emulate viewport size, device, geolocation, offline state, or media (color-scheme/reduced-motion)",
+    promptSnippet: "Change viewport, device profile, geo, offline state, or media preferences for the current browser context",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      setting: BROWSER_EMULATE_SETTING_SCHEMA,
+      width: Type.Optional(Type.Number({ description: "Viewport width (required when setting='viewport')" })),
+      height: Type.Optional(Type.Number({ description: "Viewport height (required when setting='viewport')" })),
+      device: Type.Optional(Type.String({ description: "Device name (required when setting='device')" })),
+      latitude: Type.Optional(Type.Number({ description: "Latitude (required when setting='geo')" })),
+      longitude: Type.Optional(Type.Number({ description: "Longitude (required when setting='geo')" })),
+      offline: Type.Optional(Type.Boolean({ description: "Offline state (required when setting='offline')" })),
+      media: Type.Optional(BROWSER_EMULATE_MEDIA_SCHEMA),
+      reducedMotion: Type.Optional(Type.Boolean({ description: "Emulate prefers-reduced-motion: reduce" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { lat: "latitude", lng: "longitude", lon: "longitude" },
+        numberFields: ["width", "height", "latitude", "longitude"],
+        booleanFields: ["offline", "reducedMotion"],
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await emulateBrowser(pi, state, ctx, {
+          setting: params.setting as EmulateSetting,
+          width: params.width,
+          height: params.height,
+          device: params.device,
+          latitude: params.latitude,
+          longitude: params.longitude,
+          offline: params.offline,
+          media: params.media as "dark" | "light" | undefined,
+          reducedMotion: params.reducedMotion,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_record",
+    label: "Browser Record",
+    description: "Start or stop video recording (.webm) of the current browser context for QA artifact capture",
+    promptSnippet: "Capture a video of the page during a workflow for visual verification",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      action: BROWSER_CAPTURE_ACTION_SCHEMA,
+      label: Type.Optional(Type.String({ description: "Label used to name the recording file under artifactDir" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await recordBrowser(pi, state, ctx, {
+          action: params.action as CaptureAction,
+          label: params.label,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_trace",
+    label: "Browser Trace",
+    description: "Start or stop a Playwright-style trace (.zip) for the current browser context",
+    promptSnippet: "Capture a Playwright trace bundle for diagnostics and replay",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      action: BROWSER_CAPTURE_ACTION_SCHEMA,
+      label: Type.Optional(Type.String({ description: "Label used to name the trace zip under artifactDir" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await traceBrowser(pi, state, ctx, {
+          action: params.action as CaptureAction,
+          label: params.label,
+        });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

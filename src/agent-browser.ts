@@ -3,13 +3,45 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { buildFindArgs, buildSnapshotArgs, type FindArgsOptions } from "./agent-browser-args.js";
+import {
+  buildEmulateArgs,
+  buildFindArgs,
+  buildIsArgs,
+  buildRecordArgs,
+  buildSnapshotArgs,
+  buildTabArgs,
+  buildTraceArgs,
+  type CaptureAction,
+  type EmulateArgsOptions,
+  type FindArgsOptions,
+  type IsArgsOptions,
+  type TabArgsOptions,
+} from "./agent-browser-args.js";
 import type { BrowserState, WaitMode } from "./state.js";
 import { domainFromUrl, normalizeRef, sanitizeArtifactLabel } from "./state.js";
 import { formatToolText } from "./tool-output.js";
 
-export { buildFindArgs, buildSnapshotArgs };
-export type { FindArgsOptions, SnapshotArgsOptions } from "./agent-browser-args.js";
+export {
+  buildEmulateArgs,
+  buildFindArgs,
+  buildIsArgs,
+  buildRecordArgs,
+  buildSnapshotArgs,
+  buildTabArgs,
+  buildTraceArgs,
+};
+export type {
+  CaptureAction,
+  CaptureArgsOptions,
+  EmulateArgsOptions,
+  EmulateSetting,
+  FindArgsOptions,
+  IsArgsOptions,
+  IsCheck,
+  SnapshotArgsOptions,
+  TabAction,
+  TabArgsOptions,
+} from "./agent-browser-args.js";
 
 export interface BrowserActionResult {
   summary: string;
@@ -33,7 +65,7 @@ export async function connectBrowser(
   await ensureArtifactDir(state);
   await assertAgentBrowserInstalled(pi, ctx);
 
-  const debugPortListening = await isDebugPortListening(pi, state.port, ctx);
+  const debugPortListening = await isPortListening(pi, state.port, ctx);
   if (!debugPortListening) {
     state.connected = false;
     state.lastAction = "connect";
@@ -59,6 +91,7 @@ export async function connectBrowser(
 
   // Verify CDP connection works by fetching the current URL
   await refreshCurrentUrl(pi, state, ctx);
+  await refreshDashboardUrl(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = "connect";
@@ -70,6 +103,7 @@ export async function connectBrowser(
       port: state.port,
       currentUrl: state.currentUrl,
       currentDomain: state.currentDomain,
+      dashboardUrl: state.dashboardUrl,
     },
   };
 }
@@ -184,10 +218,19 @@ export async function findBrowserElement(
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
-  const args = buildFindArgs(params);
-  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-
   const hasAction = Boolean(params.action);
+  const args = buildFindArgs({ ...params, json: !hasAction });
+
+  let matches: unknown = undefined;
+  let output = "";
+  if (hasAction) {
+    output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  } else {
+    const parsed = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
+    matches = extractFindMatches(parsed);
+    output = JSON.stringify(matches ?? parsed, null, 2);
+  }
+
   const waitMode = params.waitMode ?? (hasAction ? "networkidle" : "none");
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
@@ -208,6 +251,7 @@ export async function findBrowserElement(
       action: params.action,
       name: params.name,
       exact: params.exact,
+      matches,
       waitMode,
       currentUrl: state.currentUrl,
     },
@@ -229,6 +273,15 @@ export async function findBrowserElement(
   }
 
   return result;
+}
+
+function extractFindMatches(parsed: unknown): unknown {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
+    if ("matches" in obj) return obj.matches;
+    if ("result" in obj) return obj.result;
+  }
+  return parsed;
 }
 
 export async function fillBrowserElement(
@@ -414,9 +467,10 @@ export async function getBrowserInfo(
   }
   if (selector) args.push(selector);
 
-  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-  await refreshCurrentUrl(pi, state, ctx);
-  const formatted = await formatToolText(output, { label: `browser-${label}`, mode: "head" });
+  const parsed = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
+  const result = extractGetResult(parsed);
+  const summaryText = formatGetResult(what, result);
+  const formatted = await formatToolText(summaryText, { label: `browser-${label}`, mode: "head" });
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -430,10 +484,31 @@ export async function getBrowserInfo(
       what,
       selector,
       attrName,
+      result,
       fullOutputFile: formatted.fullOutputFile,
       currentUrl: state.currentUrl,
     },
   };
+}
+
+function extractGetResult(parsed: unknown): unknown {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "result" in parsed) {
+    return (parsed as { result: unknown }).result;
+  }
+  return parsed;
+}
+
+function formatGetResult(
+  what: "text" | "html" | "value" | "attr" | "title" | "url" | "count" | "box" | "styles",
+  result: unknown,
+): string {
+  if (result === undefined || result === null) return "(no result)";
+  if (typeof result === "string") return result;
+  if (typeof result === "number" || typeof result === "boolean") return String(result);
+  if (what === "box" || what === "styles" || typeof result === "object") {
+    return JSON.stringify(result, null, 2);
+  }
+  return String(result);
 }
 
 export async function debugBrowserPage(
@@ -449,7 +524,6 @@ export async function debugBrowserPage(
   if (kind === "network-requests" && options.filter) args.push("--filter", options.filter);
 
   const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-  await refreshCurrentUrl(pi, state, ctx);
   const formatted = await formatToolText(output || "(no output)", {
     label: `browser-${options.label ?? kind}`,
     mode: "tail",
@@ -522,7 +596,6 @@ export async function evalInBrowser(
   const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port });
   const evalFile = artifactPath(state, label, "txt");
   await writeFile(evalFile, output, "utf8");
-  await refreshCurrentUrl(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = "eval";
@@ -572,10 +645,239 @@ export async function checkpointBrowserPage(
   };
 }
 
+export async function tabBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: TabArgsOptions,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+
+  const args = buildTabArgs(params);
+  const result: BrowserActionResult = {
+    summary: "",
+    diagnostics: {
+      action: params.action,
+      url: params.url,
+      index: params.index,
+    },
+  };
+
+  if (params.action === "list") {
+    const parsed = await runAgentBrowserJSON(pi, args, ctx, 30_000, { port: state.port });
+    const tabs = normalizeTabList(parsed);
+    result.summary = `Listed ${tabs.length} tab${tabs.length === 1 ? "" : "s"}.`;
+    result.contentText = formatTabTable(tabs);
+    (result.diagnostics as Record<string, unknown>).tabs = tabs;
+    state.lastAction = args.join(" ");
+    state.connected = true;
+    state.lastError = undefined;
+    return result;
+  }
+
+  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  const verb =
+    params.action === "new"
+      ? params.url ? `Opened new tab ${params.url}.` : "Opened new tab."
+      : params.action === "close"
+        ? params.index !== undefined ? `Closed tab ${params.index}.` : "Closed current tab."
+        : `Switched to tab ${params.index}.`;
+  result.summary = verb;
+  (result.diagnostics as Record<string, unknown>).currentUrl = state.currentUrl;
+  (result.diagnostics as Record<string, unknown>).currentDomain = state.currentDomain;
+  return result;
+}
+
+function normalizeTabList(parsed: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(parsed)) return parsed.filter(isPlainObject) as Array<Record<string, unknown>>;
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.tabs)) return obj.tabs.filter(isPlainObject) as Array<Record<string, unknown>>;
+    if (Array.isArray(obj.result)) return obj.result.filter(isPlainObject) as Array<Record<string, unknown>>;
+  }
+  return [];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatTabTable(tabs: Array<Record<string, unknown>>): string {
+  if (tabs.length === 0) return "(no tabs)";
+  return tabs
+    .map((tab, i) => {
+      const index = "index" in tab ? tab.index : i;
+      const url = typeof tab.url === "string" ? tab.url : "";
+      const title = typeof tab.title === "string" ? tab.title : "";
+      const active = tab.active ? " *" : "";
+      const titlePart = title ? ` ${title}` : "";
+      const urlPart = url ? `  ${url}` : "";
+      return `${String(index).padStart(2)}${active}${titlePart}${urlPart}`;
+    })
+    .join("\n");
+}
+
+export async function isBrowserState(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: IsArgsOptions,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+
+  const args = buildIsArgs(params);
+  const parsed = await runAgentBrowserJSON(pi, args, ctx, 30_000, { port: state.port });
+  const value = extractBooleanResult(parsed);
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `${params.selector} ${params.check}: ${value}`,
+    contentText: String(value),
+    diagnostics: {
+      check: params.check,
+      selector: params.selector,
+      result: value,
+    },
+  };
+}
+
+function extractBooleanResult(parsed: unknown): boolean {
+  if (typeof parsed === "boolean") return parsed;
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.result === "boolean") return obj.result;
+    if (typeof obj.value === "boolean") return obj.value;
+  }
+  throw new Error(`browser_is expected a boolean result, got: ${JSON.stringify(parsed)}`);
+}
+
+export async function emulateBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: EmulateArgsOptions,
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+
+  const args = buildEmulateArgs(params);
+  await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Emulated ${params.setting}.`,
+    diagnostics: {
+      setting: params.setting,
+      width: params.width,
+      height: params.height,
+      device: params.device,
+      latitude: params.latitude,
+      longitude: params.longitude,
+      offline: params.offline,
+      media: params.media,
+      reducedMotion: params.reducedMotion,
+    },
+  };
+}
+
+export async function recordBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: { action: CaptureAction; label?: string },
+): Promise<BrowserActionResult> {
+  return captureRecording(pi, state, ctx, params, {
+    kind: "recording",
+    extension: "webm",
+    buildArgs: buildRecordArgs,
+  });
+}
+
+export async function traceBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: { action: CaptureAction; label?: string },
+): Promise<BrowserActionResult> {
+  return captureRecording(pi, state, ctx, params, {
+    kind: "tracing",
+    extension: "zip",
+    buildArgs: buildTraceArgs,
+  });
+}
+
+async function captureRecording(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: { action: CaptureAction; label?: string },
+  options: {
+    kind: "recording" | "tracing";
+    extension: string;
+    buildArgs: (input: { action: CaptureAction; file?: string }) => string[];
+  },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await ensureArtifactDir(state);
+
+  if (params.action === "start") {
+    const label = params.label ?? options.kind;
+    const file = artifactPath(state, label, options.extension);
+    const args = options.buildArgs({ action: "start", file });
+    await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+    state[options.kind] = { file, startedAt: Date.now() };
+    state.connected = true;
+    state.lastAction = args.join(" ");
+    state.lastError = undefined;
+    await refreshCurrentUrl(pi, state, ctx);
+
+    return {
+      summary: `Started ${options.kind} → ${file}`,
+      diagnostics: {
+        action: "start",
+        file,
+        currentUrl: state.currentUrl,
+      },
+    };
+  }
+
+  const previous = state[options.kind];
+  const args = options.buildArgs({ action: "stop" });
+  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  state[options.kind] = undefined;
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: previous ? `Stopped ${options.kind} → ${previous.file}` : `Stopped ${options.kind}.`,
+    artifacts: previous?.file ? [previous.file] : undefined,
+    diagnostics: {
+      action: "stop",
+      file: previous?.file,
+      durationMs: previous ? Date.now() - previous.startedAt : undefined,
+    },
+  };
+}
+
 export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void> {
   state.connected = false;
   state.currentUrl = undefined;
   state.currentDomain = undefined;
+  state.dashboardUrl = undefined;
+  state.recording = undefined;
+  state.tracing = undefined;
 }
 
 async function ensureReady(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
@@ -624,7 +926,7 @@ async function ensurePageTarget(
   }
 }
 
-async function isDebugPortListening(
+async function isPortListening(
   pi: ExtensionAPI,
   port: number,
   ctx: ExtensionContext,
@@ -648,6 +950,18 @@ async function refreshCurrentUrl(
   state.currentDomain = domainFromUrl(url);
 }
 
+async function refreshDashboardUrl(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<void> {
+  if (await isPortListening(pi, state.dashboardPort, ctx)) {
+    state.dashboardUrl = `http://localhost:${state.dashboardPort}`;
+  } else {
+    state.dashboardUrl = undefined;
+  }
+}
+
 async function runAgentBrowser(
   pi: ExtensionAPI,
   args: string[],
@@ -668,6 +982,41 @@ async function runAgentBrowser(
   }
 
   return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+}
+
+async function runAgentBrowserJSON(
+  pi: ExtensionAPI,
+  args: string[],
+  ctx: ExtensionContext,
+  timeout: number,
+  options: { port?: number } = {},
+): Promise<unknown> {
+  const argsWithJson = args.includes("--json") ? args : [...args, "--json"];
+  const output = await runAgentBrowser(pi, argsWithJson, ctx, timeout, options);
+  if (!output) return undefined;
+
+  const jsonStart = findJsonStart(output);
+  const candidate = jsonStart >= 0 ? output.slice(jsonStart) : output;
+
+  try {
+    return JSON.parse(candidate);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse agent-browser --json output (${reason}): ${truncateOutputForError(output)}`);
+  }
+}
+
+function findJsonStart(output: string): number {
+  for (let i = 0; i < output.length; i++) {
+    const ch = output[i];
+    if (ch === "{" || ch === "[") return i;
+  }
+  return -1;
+}
+
+function truncateOutputForError(output: string, max = 200): string {
+  const trimmed = output.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
 async function waitForLoad(pi: ExtensionAPI, ctx: ExtensionContext, waitMode: WaitMode, port: number): Promise<void> {

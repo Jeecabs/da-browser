@@ -262,6 +262,11 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 | `browser_command` | Run raw `agent-browser` args with active CDP port prepended |
 | `browser_eval` | Evaluate JS in page context |
 | `browser_checkpoint` | Save current page state |
+| `browser_tab` | List, open, close, or switch browser tabs |
+| `browser_is` | Boolean assertions for `visible`/`enabled`/`checked` |
+| `browser_emulate` | Emulate viewport, device, geolocation, offline, or media settings |
+| `browser_record` | Start or stop video recording (.webm) of the current context |
+| `browser_trace` | Start or stop a Playwright trace (.zip) for the current context |
 
 ### How it works
 
@@ -285,6 +290,14 @@ Default port is `9222`. Override with any of:
 - `/browser connect 9333`
 - `browser_connect({ port: 9333 })`
 - `PI_BROWSER_PORT=9333` env var
+
+### QA capture example
+
+```text
+browser_record({ action: "start", label: "demo" })
+# ... drive the page ...
+browser_record({ action: "stop" })
+```
 
 ## Writing new extensions
 

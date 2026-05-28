@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildFindArgs, buildSnapshotArgs } from "../src/agent-browser-args.ts";
+import {
+  buildEmulateArgs,
+  buildFindArgs,
+  buildIsArgs,
+  buildRecordArgs,
+  buildSnapshotArgs,
+  buildTabArgs,
+  buildTraceArgs,
+} from "../src/agent-browser-args.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
 import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
 import { shouldUseRooForCommand } from "../src/roo/command-policy.ts";
@@ -158,6 +166,140 @@ test("buildSnapshotArgs composes -i, -c, -d, and -s flags", () => {
   assert.deepEqual(buildSnapshotArgs({ depth: 0 }), ["snapshot", "-d", "0"]);
 });
 
+test("buildFindArgs appends --json when requested", () => {
+  assert.deepEqual(
+    buildFindArgs({ locator: "role", value: "button", json: true }),
+    ["find", "role", "button", "--json"],
+  );
+
+  assert.deepEqual(
+    buildFindArgs({ locator: "role", value: "button", action: "click", json: true }),
+    ["find", "role", "button", "click", "--json"],
+  );
+});
+
+test("buildTabArgs handles list, new, close, and switch", () => {
+  assert.deepEqual(buildTabArgs({ action: "list" }), ["tab", "list", "--json"]);
+
+  assert.deepEqual(buildTabArgs({ action: "new" }), ["tab", "new"]);
+  assert.deepEqual(buildTabArgs({ action: "new", url: "https://example.com" }), [
+    "tab",
+    "new",
+    "https://example.com",
+  ]);
+
+  assert.deepEqual(buildTabArgs({ action: "close" }), ["tab", "close"]);
+  assert.deepEqual(buildTabArgs({ action: "close", index: 2 }), ["tab", "close", "2"]);
+
+  assert.deepEqual(buildTabArgs({ action: "switch", index: 1 }), ["tab", "switch", "1"]);
+
+  assert.throws(() => buildTabArgs({ action: "switch" }), /requires an index/);
+  assert.throws(
+    () => buildTabArgs({ action: "new", index: 1 }),
+    /does not accept an index/,
+  );
+  assert.throws(
+    () => buildTabArgs({ action: "list", url: "https://example.com" }),
+    /does not accept url or index/,
+  );
+});
+
+test("buildIsArgs covers all three checks and requires a selector", () => {
+  assert.deepEqual(buildIsArgs({ check: "visible", selector: "@e1" }), [
+    "is",
+    "visible",
+    "@e1",
+    "--json",
+  ]);
+  assert.deepEqual(buildIsArgs({ check: "enabled", selector: "button" }), [
+    "is",
+    "enabled",
+    "button",
+    "--json",
+  ]);
+  assert.deepEqual(buildIsArgs({ check: "checked", selector: "input#agree" }), [
+    "is",
+    "checked",
+    "input#agree",
+    "--json",
+  ]);
+
+  assert.throws(() => buildIsArgs({ check: "visible", selector: "" }), /requires a selector/);
+});
+
+test("buildEmulateArgs validates per-setting required fields", () => {
+  assert.deepEqual(
+    buildEmulateArgs({ setting: "viewport", width: 800, height: 600 }),
+    ["emulate", "viewport", "800", "600"],
+  );
+  assert.deepEqual(
+    buildEmulateArgs({ setting: "device", device: "iPhone 14" }),
+    ["emulate", "device", "iPhone 14"],
+  );
+  assert.deepEqual(
+    buildEmulateArgs({ setting: "geo", latitude: 51.5, longitude: -0.1 }),
+    ["emulate", "geo", "51.5", "-0.1"],
+  );
+  assert.deepEqual(buildEmulateArgs({ setting: "offline", offline: true }), [
+    "emulate",
+    "offline",
+    "true",
+  ]);
+  assert.deepEqual(buildEmulateArgs({ setting: "offline", offline: false }), [
+    "emulate",
+    "offline",
+    "false",
+  ]);
+  assert.deepEqual(buildEmulateArgs({ setting: "media", media: "dark" }), [
+    "emulate",
+    "media",
+    "dark",
+  ]);
+  assert.deepEqual(
+    buildEmulateArgs({ setting: "media", media: "light", reducedMotion: true }),
+    ["emulate", "media", "light", "--reduced-motion", "reduce"],
+  );
+  assert.deepEqual(
+    buildEmulateArgs({ setting: "media", reducedMotion: false }),
+    ["emulate", "media", "--reduced-motion", "no-preference"],
+  );
+
+  assert.throws(() => buildEmulateArgs({ setting: "viewport", width: 800 }), /requires width and height/);
+  assert.throws(() => buildEmulateArgs({ setting: "device" }), /requires device name/);
+  assert.throws(
+    () => buildEmulateArgs({ setting: "geo", latitude: 51.5 }),
+    /requires latitude and longitude/,
+  );
+  assert.throws(() => buildEmulateArgs({ setting: "offline" }), /requires offline boolean/);
+  assert.throws(() => buildEmulateArgs({ setting: "media" }), /requires media .* or reducedMotion/);
+});
+
+test("buildRecordArgs and buildTraceArgs cover start with/without label and stop", () => {
+  assert.deepEqual(buildRecordArgs({ action: "start" }), ["record", "start"]);
+  assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm" }), [
+    "record",
+    "start",
+    "/tmp/x.webm",
+  ]);
+  assert.deepEqual(buildRecordArgs({ action: "stop" }), ["record", "stop"]);
+  assert.throws(
+    () => buildRecordArgs({ action: "stop", file: "/tmp/x.webm" }),
+    /does not accept a file path/,
+  );
+
+  assert.deepEqual(buildTraceArgs({ action: "start" }), ["trace", "start"]);
+  assert.deepEqual(buildTraceArgs({ action: "start", file: "/tmp/t.zip" }), [
+    "trace",
+    "start",
+    "/tmp/t.zip",
+  ]);
+  assert.deepEqual(buildTraceArgs({ action: "stop" }), ["trace", "stop"]);
+  assert.throws(
+    () => buildTraceArgs({ action: "stop", file: "/tmp/t.zip" }),
+    /does not accept a file path/,
+  );
+});
+
 test("prepareCompatArguments for browser_find aliases role/element and coerces exact", () => {
   const aliased = prepareCompatArguments(
     { role: "button" },
@@ -192,29 +334,43 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
   assert.equal(normalizeRef("@@e12"), "e12");
   assert.equal(resolveBrowserPort(9333), 9333);
 
-  const initial = createBrowserState("/tmp/my project", 9333);
+  const initial = createBrowserState("/tmp/my project", 9333, 4949);
   assert.equal(initial.port, 9333);
+  assert.equal(initial.dashboardPort, 4949);
   assert.equal(initial.connected, false);
 
-  const restored = mergeBrowserState("/tmp/my project", {
-    port: 9444,
-    connected: true,
-    currentUrl: "https://linear.app/foo",
-    currentDomain: "linear.app",
-    lastAction: "open",
-  });
+  const restored = mergeBrowserState(
+    "/tmp/my project",
+    {
+      port: 9444,
+      dashboardPort: 4848,
+      connected: true,
+      currentUrl: "https://linear.app/foo",
+      currentDomain: "linear.app",
+      dashboardUrl: "http://localhost:4848",
+      lastAction: "open",
+      recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
+      tracing: { file: "/tmp/trace.zip", startedAt: 1700000001000 },
+    },
+    9222,
+    4848,
+  );
 
   assert.deepEqual(serializeBrowserState(restored), {
     port: 9444,
+    dashboardPort: 4848,
     connected: true,
     currentUrl: "https://linear.app/foo",
     currentDomain: "linear.app",
+    dashboardUrl: "http://localhost:4848",
     lastAction: "open",
     lastSnapshotAt: undefined,
     lastSnapshotFile: undefined,
     lastScreenshotFile: undefined,
     lastEvalFile: undefined,
     lastError: undefined,
+    recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
+    tracing: { file: "/tmp/trace.zip", startedAt: 1700000001000 },
   });
 });
 

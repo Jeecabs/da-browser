@@ -3,64 +3,94 @@ import { basename, join } from "node:path";
 
 export type WaitMode = "none" | "load" | "networkidle";
 
+export interface BrowserRecordingState {
+  file: string;
+  startedAt: number;
+}
+
 export interface BrowserState {
   port: number;
+  dashboardPort: number;
   artifactDir: string;
   connected: boolean;
   currentUrl?: string;
   currentDomain?: string;
+  dashboardUrl?: string;
   lastAction?: string;
   lastSnapshotAt?: number;
   lastSnapshotFile?: string;
   lastScreenshotFile?: string;
   lastEvalFile?: string;
   lastError?: string;
+  recording?: BrowserRecordingState;
+  tracing?: BrowserRecordingState;
 }
 
-export function createBrowserState(cwd: string, port = resolveBrowserPort()): BrowserState {
+export function createBrowserState(
+  cwd: string,
+  port = resolveBrowserPort(),
+  dashboardPort = resolveBrowserDashboardPort(),
+): BrowserState {
   const slug = `${sanitizeSegment(basename(cwd) || "project")}-${hashString(cwd)}`;
   const artifactDir = join(os.tmpdir(), "pi-browser-ops", slug);
 
   return {
     port,
+    dashboardPort,
     artifactDir,
     connected: false,
   };
 }
 
-export function mergeBrowserState(cwd: string, input: unknown, port = resolveBrowserPort()): BrowserState {
-  const base = createBrowserState(cwd, port);
+export function mergeBrowserState(
+  cwd: string,
+  input: unknown,
+  port = resolveBrowserPort(),
+  dashboardPort = resolveBrowserDashboardPort(),
+): BrowserState {
+  const base = createBrowserState(cwd, port, dashboardPort);
   if (!input || typeof input !== "object") return base;
 
   const persisted = input as Partial<BrowserState>;
   const resolvedPort = resolveBrowserPort(typeof persisted.port === "number" ? persisted.port : port);
+  const resolvedDashboardPort = resolveBrowserDashboardPort(
+    typeof persisted.dashboardPort === "number" ? persisted.dashboardPort : dashboardPort,
+  );
   return {
     ...base,
     port: resolvedPort,
+    dashboardPort: resolvedDashboardPort,
     connected: Boolean(persisted.connected),
     currentUrl: persisted.currentUrl,
     currentDomain: persisted.currentDomain,
+    dashboardUrl: persisted.dashboardUrl,
     lastAction: persisted.lastAction,
     lastSnapshotAt: persisted.lastSnapshotAt,
     lastSnapshotFile: persisted.lastSnapshotFile,
     lastScreenshotFile: persisted.lastScreenshotFile,
     lastEvalFile: persisted.lastEvalFile,
     lastError: persisted.lastError,
+    recording: cloneRecording(persisted.recording),
+    tracing: cloneRecording(persisted.tracing),
   };
 }
 
 export function serializeBrowserState(state: BrowserState): Record<string, unknown> {
   return {
     port: state.port,
+    dashboardPort: state.dashboardPort,
     connected: state.connected,
     currentUrl: state.currentUrl,
     currentDomain: state.currentDomain,
+    dashboardUrl: state.dashboardUrl,
     lastAction: state.lastAction,
     lastSnapshotAt: state.lastSnapshotAt,
     lastSnapshotFile: state.lastSnapshotFile,
     lastScreenshotFile: state.lastScreenshotFile,
     lastEvalFile: state.lastEvalFile,
     lastError: state.lastError,
+    recording: state.recording ? { ...state.recording } : undefined,
+    tracing: state.tracing ? { ...state.tracing } : undefined,
   };
 }
 
@@ -75,6 +105,20 @@ export function resolveBrowserPort(explicitPort?: number): number {
 
   if (isValidPort(envPort)) return envPort;
   return 9222;
+}
+
+export function resolveBrowserDashboardPort(explicitPort?: number): number {
+  if (isValidPort(explicitPort)) return explicitPort;
+
+  const envPort = Number(process.env.PI_BROWSER_DASHBOARD_PORT);
+  if (isValidPort(envPort)) return envPort;
+  return 4848;
+}
+
+function cloneRecording(input?: BrowserRecordingState): BrowserRecordingState | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  if (typeof input.file !== "string" || typeof input.startedAt !== "number") return undefined;
+  return { file: input.file, startedAt: input.startedAt };
 }
 
 export function browserStatusText(state: BrowserState): string {
@@ -94,6 +138,12 @@ export function browserWidgetLines(state: BrowserState): string[] {
   if (state.lastAction) {
     lines.push(`  ${state.lastAction}  ${formatRelativeTime(state.lastSnapshotAt)}`);
   }
+  if (state.recording || state.tracing) {
+    const flags = [state.recording ? "rec" : null, state.tracing ? "trace" : null]
+      .filter((s): s is string => Boolean(s))
+      .join(" ");
+    lines.push(`  ${flags}`);
+  }
   if (state.lastError) {
     lines.push(`  ! ${truncateErrorLine(state.lastError)}`);
   }
@@ -112,6 +162,9 @@ export function browserSummary(state: BrowserState): string {
     `  artifacts ${state.artifactDir}`,
   ];
 
+  if (state.dashboardUrl) lines.push(`  dashboard ${state.dashboardUrl}`);
+  if (state.recording) lines.push(`  recording ${state.recording.file}`);
+  if (state.tracing) lines.push(`  tracing   ${state.tracing.file}`);
   if (state.lastError) lines.push(`  error     ${state.lastError}`);
   return lines.join("\n");
 }

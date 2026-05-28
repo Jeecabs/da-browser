@@ -3,9 +3,13 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+import { buildFindArgs, buildSnapshotArgs, type FindArgsOptions } from "./agent-browser-args.js";
 import type { BrowserState, WaitMode } from "./state.js";
 import { domainFromUrl, normalizeRef, sanitizeArtifactLabel } from "./state.js";
 import { formatToolText } from "./tool-output.js";
+
+export { buildFindArgs, buildSnapshotArgs };
+export type { FindArgsOptions, SnapshotArgsOptions } from "./agent-browser-args.js";
 
 export interface BrowserActionResult {
   summary: string;
@@ -102,19 +106,19 @@ export async function snapshotBrowserPage(
   ctx: ExtensionContext,
   interactiveOnly: boolean,
   label = "snapshot",
+  options: { compact?: boolean; depth?: number; selector?: string } = {},
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
 
-  const args = ["snapshot"];
-  if (interactiveOnly) args.push("-i");
+  const args = buildSnapshotArgs({ interactiveOnly, ...options });
   const snapshot = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
 
   const snapshotFile = artifactPath(state, label, "txt");
   await writeFile(snapshotFile, snapshot, "utf8");
 
   state.connected = true;
-  state.lastAction = interactiveOnly ? "snapshot -i" : "snapshot";
+  state.lastAction = args.join(" ");
   state.lastSnapshotAt = Date.now();
   state.lastSnapshotFile = snapshotFile;
   state.lastError = undefined;
@@ -126,6 +130,9 @@ export async function snapshotBrowserPage(
     artifacts: [snapshotFile],
     diagnostics: {
       interactiveOnly,
+      compact: options.compact,
+      depth: options.depth,
+      selector: options.selector,
       snapshotFile,
       currentUrl: state.currentUrl,
     },
@@ -164,6 +171,61 @@ export async function clickBrowserElement(
     const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `after-click-${normalizedRef}`);
     result.contentText = snapshot.contentText;
     result.artifacts = snapshot.artifacts;
+  }
+
+  return result;
+}
+
+export async function findBrowserElement(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: FindArgsOptions & { waitMode?: WaitMode; resnapshot?: boolean },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+
+  const args = buildFindArgs(params);
+  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+
+  const hasAction = Boolean(params.action);
+  const waitMode = params.waitMode ?? (hasAction ? "networkidle" : "none");
+  await waitForLoad(pi, ctx, waitMode, state.port);
+  await refreshCurrentUrl(pi, state, ctx);
+
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  const summary = hasAction
+    ? `Found ${params.locator}=${params.value} and ${params.action}.`
+    : `Found ${params.locator}=${params.value}.`;
+
+  const result: BrowserActionResult = {
+    summary,
+    diagnostics: {
+      locator: params.locator,
+      value: params.value,
+      action: params.action,
+      name: params.name,
+      exact: params.exact,
+      waitMode,
+      currentUrl: state.currentUrl,
+    },
+  };
+
+  const willResnapshot = (params.resnapshot ?? hasAction) && hasAction;
+  if (willResnapshot) {
+    const snapshot = await snapshotBrowserPage(
+      pi,
+      state,
+      ctx,
+      true,
+      `after-find-${sanitizeArtifactLabel(params.locator)}`,
+    );
+    result.contentText = snapshot.contentText;
+    result.artifacts = snapshot.artifacts;
+  } else if (output) {
+    result.contentText = output;
   }
 
   return result;

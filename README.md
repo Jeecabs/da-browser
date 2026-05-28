@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.73.1+`
 
@@ -209,6 +209,32 @@ Guidance loaded with the tool:
 - Cover the design basics: readable typography, a consistent palette, responsive layout, accessible contrast, even spacing, and a clear visual hierarchy.
 - Style to fit the artifact's purpose: favor restraint, use system fonts and simple palettes freely, and keep any effects in service of comprehension.
 - After writing, call `html_artifact_open` to open it directly. Use `app: "arc"` for Arc or omit for macOS default browser. Verify with `browser_checkpoint` when visual fidelity matters.
+
+### Video and browser artifact analysis
+
+Turns browser recordings into compact, model-readable evidence. Uses local `ffmpeg`/`ffprobe` on `PATH`; override with `FFMPEG_BIN` and `FFPROBE_BIN` if needed. Install with `brew install ffmpeg`.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `browser_artifacts_list` | List recent browser artifacts in the current pi browser artifact directory |
+| `video_probe` | Inspect video duration, size, codecs, resolution, FPS, and audio tracks |
+| `video_contact_sheet` | Convert a WebM/MP4/MOV/MKV into a visual QA grid, with timestamps when ffmpeg supports `drawtext` |
+| `video_extract_frames` | Extract exact frames, usually around suspicious timestamps from a contact sheet |
+| `browser_video_review` | Probe the latest browser recording and return a contact sheet |
+
+**Command:** `/video status | latest | probe [path] | sheet [path]`
+
+Common flow after `browser_record stop`:
+
+```text
+browser_artifacts_list kind:"recordings"
+video_probe path:"last"
+browser_video_review path:"last"
+```
+
+Use `video_extract_frames timestamps:[12.5, 18.0]` to zoom into contact-sheet tiles.
 
 ### Watchtower
 

@@ -18,6 +18,7 @@
       "./src/roo/index.ts",
       "./src/tmux-cx-pair/index.ts",
       "./src/html-artifacts/index.ts",
+      "./src/video/index.ts",
       "./src/excalidraw/index.ts",
       "./src/watchtower.ts",
       "./src/vicecity/index.ts"

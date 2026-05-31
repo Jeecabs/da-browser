@@ -92,6 +92,7 @@ export async function connectBrowser(
   // Verify CDP connection works by fetching the current URL
   await refreshCurrentUrl(pi, state, ctx);
   await refreshDashboardUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = "connect";
@@ -119,6 +120,7 @@ export async function openBrowserPage(
   await runAgentBrowser(pi, ["open", url], ctx, 120_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `open ${url}`;
@@ -187,6 +189,7 @@ export async function clickBrowserElement(
   await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `click @${normalizedRef}`;
@@ -234,6 +237,7 @@ export async function findBrowserElement(
   const waitMode = params.waitMode ?? (hasAction ? "networkidle" : "none");
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  if (hasAction) await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -298,6 +302,7 @@ export async function fillBrowserElement(
   await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `fill @${normalizedRef}`;
@@ -328,6 +333,7 @@ export async function selectBrowserOption(
   await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `select @${normalizedRef}`;
@@ -355,6 +361,7 @@ export async function pressBrowserKey(
   await runAgentBrowser(pi, ["press", key], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `press ${key}`;
@@ -384,6 +391,7 @@ export async function scrollBrowserPage(
   await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `scroll ${direction}${pixels ? ` ${pixels}` : ""}`;
@@ -409,6 +417,7 @@ export async function waitInBrowser(
   await ensureReady(pi, state, ctx);
   await runAgentBrowser(pi, ["wait", target], ctx, 120_000, { port: state.port });
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = `wait ${target}`;
@@ -434,6 +443,7 @@ export async function navigateBrowser(
   await runAgentBrowser(pi, [action], ctx, 60_000, { port: state.port });
   await waitForLoad(pi, ctx, waitMode, state.port);
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = action;
@@ -560,6 +570,7 @@ export async function runBrowserCommand(
   const timeout = Math.min(Math.max(timeoutMs ?? 60_000, 1_000), 300_000);
   const output = await runAgentBrowser(pi, safeArgs, ctx, timeout, { port: state.port });
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
   const formatted = await formatToolText(output || "(no output)", {
     label: `browser-${label}`,
     mode: "head",
@@ -594,6 +605,7 @@ export async function evalInBrowser(
   await ensureArtifactDir(state);
 
   const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port });
+  await markControlledTab(pi, state, ctx);
   const evalFile = artifactPath(state, label, "txt");
   await writeFile(evalFile, output, "utf8");
 
@@ -625,6 +637,7 @@ export async function checkpointBrowserPage(
   const safeLabel = sanitizeArtifactLabel(label);
   const screenshotFile = artifactPath(state, `${safeLabel}-screenshot`, "png");
 
+  await markControlledTab(pi, state, ctx);
   await runAgentBrowser(pi, ["screenshot", screenshotFile], ctx, 60_000, { port: state.port });
   state.lastScreenshotFile = screenshotFile;
 
@@ -675,8 +688,12 @@ export async function tabBrowser(
     return result;
   }
 
+  if (params.action === "new" || params.action === "switch") {
+    await clearControlledTab(pi, state, ctx);
+  }
   await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
   await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -770,6 +787,7 @@ export async function emulateBrowser(
 
   const args = buildEmulateArgs(params);
   await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+  await markControlledTab(pi, state, ctx);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -836,6 +854,7 @@ async function captureRecording(
     const file = artifactPath(state, label, options.extension);
     const args = options.buildArgs({ action: "start", file });
     await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+    await markControlledTab(pi, state, ctx);
     state[options.kind] = { file, startedAt: Date.now() };
     state.connected = true;
     state.lastAction = args.join(" ");
@@ -878,6 +897,111 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
   state.dashboardUrl = undefined;
   state.recording = undefined;
   state.tracing = undefined;
+}
+
+const CONTROLLED_TAB_BADGE_ID = "__pi_agent_controlled_tab_badge__";
+const CONTROLLED_TAB_STYLE_ID = "__pi_agent_controlled_tab_style__";
+const CONTROLLED_TAB_FAVICON_ATTR = "data-pi-agent-controlled-tab-favicon";
+const CONTROLLED_TAB_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0abfc"/>
+      <stop offset="0.4" stop-color="#a855f7"/>
+      <stop offset="0.7" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="hl" cx="26%" cy="16%" r="62%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <rect width="64" height="64" rx="15" fill="url(#hl)"/>
+</svg>`;
+
+// Marks a controlled tab: the whole badge is a slowly flowing aurora gradient box
+// pinned top-right (the motion doubles as the "live / under control" signal), plus a
+// matching gradient favicon. No text, no branding — just a small, calm utility chip.
+const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
+  const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
+  const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
+  const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
+  const faviconHref = "data:image/svg+xml," + encodeURIComponent(${JSON.stringify(CONTROLLED_TAB_FAVICON_SVG)});
+
+  let icon = document.querySelector("link[" + faviconAttr + "]");
+  if (!icon) {
+    icon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel*="icon" i]');
+  }
+  if (!icon) {
+    icon = document.createElement("link");
+    icon.rel = "icon";
+    icon.dataset.piAgentControlledTabCreated = "true";
+    document.head.appendChild(icon);
+  }
+  if (!icon.hasAttribute(faviconAttr)) {
+    icon.dataset.piAgentControlledTabOriginalHref = icon.getAttribute("href") || "";
+  }
+  icon.setAttribute(faviconAttr, "true");
+  icon.href = faviconHref;
+
+  const sel = "#" + badgeId;
+  let style = document.getElementById(styleId);
+  if (!style) {
+    style = document.createElement("style");
+    style.id = styleId;
+    document.head.appendChild(style);
+  }
+  style.textContent =
+    "@keyframes __pi_ct_flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}" +
+    sel + "{position:fixed;top:12px;right:12px;z-index:2147483647;width:24px;height:24px;border-radius:7px;" +
+      "background:linear-gradient(125deg,#f0abfc,#a855f7,#6366f1,#22d3ee,#a855f7,#f0abfc);background-size:300% 300%;" +
+      "animation:__pi_ct_flow 8s ease infinite;" +
+      "box-shadow:inset 0 0 0 1px rgba(255,255,255,0.24),0 0 16px -2px rgba(168,85,247,0.55),0 6px 18px rgba(0,0,0,0.22);" +
+      "pointer-events:none;overflow:hidden;}" +
+    sel + "::before{content:'';position:absolute;inset:0;border-radius:7px;" +
+      "background:radial-gradient(70% 60% at 26% 16%,rgba(255,255,255,0.5),transparent 60%);}" +
+    "@media (prefers-reduced-motion: reduce){" + sel + "{animation:none}}";
+
+  document.getElementById(badgeId)?.remove();
+  const badge = document.createElement("div");
+  badge.id = badgeId;
+  document.documentElement.appendChild(badge);
+})()`;
+
+const CONTROLLED_TAB_CLEAR_SCRIPT = `(() => {
+  const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
+  const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
+  const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
+
+  document.getElementById(badgeId)?.remove();
+  document.getElementById(styleId)?.remove();
+
+  const icon = document.querySelector("link[" + faviconAttr + "]");
+  if (icon) {
+    if (icon.dataset.piAgentControlledTabCreated === "true") {
+      icon.remove();
+    } else {
+      const originalHref = icon.dataset.piAgentControlledTabOriginalHref || "";
+      if (originalHref) icon.setAttribute("href", originalHref);
+      else icon.removeAttribute("href");
+      icon.removeAttribute(faviconAttr);
+      delete icon.dataset.piAgentControlledTabOriginalHref;
+    }
+  }
+})()`;
+
+async function markControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
+  await runAgentBrowser(pi, ["eval", CONTROLLED_TAB_MARK_SCRIPT], ctx, 10_000, {
+    port: state.port,
+    allowFailure: true,
+  });
+}
+
+async function clearControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
+  await runAgentBrowser(pi, ["eval", CONTROLLED_TAB_CLEAR_SCRIPT], ctx, 10_000, {
+    port: state.port,
+    allowFailure: true,
+  });
 }
 
 async function ensureReady(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {

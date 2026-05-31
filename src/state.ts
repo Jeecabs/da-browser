@@ -115,6 +115,15 @@ export function resolveBrowserDashboardPort(explicitPort?: number): number {
   return 4848;
 }
 
+// The "agent is controlling this tab" banner is on by default. Set
+// PI_BROWSER_CONTROL_BANNER to a falsy value (0/false/off/no/none/hidden) to
+// suppress it — e.g. for a clean demo recording.
+export function resolveControlBannerEnabled(): boolean {
+  const raw = process.env.PI_BROWSER_CONTROL_BANNER?.trim().toLowerCase();
+  if (!raw) return true;
+  return !["0", "false", "off", "no", "none", "hidden", "disable", "disabled"].includes(raw);
+}
+
 function cloneRecording(input?: BrowserRecordingState): BrowserRecordingState | undefined {
   if (!input || typeof input !== "object") return undefined;
   if (typeof input.file !== "string" || typeof input.startedAt !== "number") return undefined;

@@ -969,13 +969,13 @@ const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
   }
   style.textContent =
     "@keyframes __pi_rec_slide{from{background-position:0 0}to{background-position:200% 0}}" +
-    "@keyframes __pi_rec_breathe{0%,100%{opacity:.4}50%{opacity:.95}}" +
+    "@keyframes __pi_rec_breathe{0%,100%{opacity:.28}50%{opacity:.62}}" +
     sel + "{position:fixed;top:0;left:0;right:0;height:4px;z-index:2147483647;pointer-events:none;" +
       "background:linear-gradient(90deg,#991b1b,#dc2626 22%,#f87171 50%,#dc2626 78%,#991b1b);background-size:200% 100%;" +
       "animation:__pi_rec_slide 5.5s linear infinite;" +
-      "box-shadow:0 0 10px 1px rgba(239,68,68,.85),0 5px 22px -4px rgba(220,38,38,.6);}" +
-    sel + "::after{content:'';position:absolute;left:0;right:0;top:100%;height:16px;pointer-events:none;" +
-      "background:linear-gradient(to bottom,rgba(239,68,68,.5),rgba(239,68,68,0));" +
+      "box-shadow:0 0 7px 0 rgba(239,68,68,.55),0 4px 15px -6px rgba(220,38,38,.4);}" +
+    sel + "::after{content:'';position:absolute;left:0;right:0;top:100%;height:13px;pointer-events:none;" +
+      "background:linear-gradient(to bottom,rgba(239,68,68,.32),rgba(239,68,68,0));" +
       "animation:__pi_rec_breathe 2.6s ease-in-out infinite;}" +
     "@media (prefers-reduced-motion: reduce){" +
       sel + "{animation:none}" +

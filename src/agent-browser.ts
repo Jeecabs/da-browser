@@ -18,7 +18,15 @@ import {
   type TabArgsOptions,
 } from "./agent-browser-args.js";
 import type { BrowserState, WaitMode } from "./state.js";
-import { domainFromUrl, normalizeRef, resolveControlBannerEnabled, sanitizeArtifactLabel } from "./state.js";
+import {
+  domainFromUrl,
+  isLocalUrl,
+  localBrowserSettleMs,
+  localBrowserTimeoutMs,
+  normalizeRef,
+  resolveControlBannerEnabled,
+  sanitizeArtifactLabel,
+} from "./state.js";
 import { formatToolText } from "./tool-output.js";
 
 export {
@@ -117,8 +125,9 @@ export async function openBrowserPage(
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, ["open", url], ctx, 120_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  const local = isLocalUrl(url) || isLocalUrl(state.currentUrl);
+  await runAgentBrowser(pi, ["open", url], ctx, 120_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -185,9 +194,10 @@ export async function clickBrowserElement(
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
+  const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -221,21 +231,22 @@ export async function findBrowserElement(
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
+  const local = isLocalUrl(state.currentUrl);
   const hasAction = Boolean(params.action);
   const args = buildFindArgs({ ...params, json: !hasAction });
 
   let matches: unknown = undefined;
   let output = "";
   if (hasAction) {
-    output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+    output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local });
   } else {
-    const parsed = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
+    const parsed = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port, local });
     matches = extractFindMatches(parsed);
     output = JSON.stringify(matches ?? parsed, null, 2);
   }
 
   const waitMode = params.waitMode ?? (hasAction ? "networkidle" : "none");
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   if (hasAction) await markControlledTab(pi, state, ctx);
 
@@ -298,9 +309,10 @@ export async function fillBrowserElement(
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
+  const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -329,9 +341,10 @@ export async function selectBrowserOption(
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
+  const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -358,8 +371,9 @@ export async function pressBrowserKey(
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, ["press", key], ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  const local = isLocalUrl(state.currentUrl);
+  await runAgentBrowser(pi, ["press", key], ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -388,8 +402,9 @@ export async function scrollBrowserPage(
   await ensureReady(pi, state, ctx);
   const args = ["scroll", direction];
   if (typeof pixels === "number") args.push(String(pixels));
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  const local = isLocalUrl(state.currentUrl);
+  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -415,7 +430,7 @@ export async function waitInBrowser(
   target: string,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, ["wait", target], ctx, 120_000, { port: state.port });
+  await runAgentBrowser(pi, ["wait", target], ctx, 120_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -440,8 +455,9 @@ export async function navigateBrowser(
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
-  await runAgentBrowser(pi, [action], ctx, 60_000, { port: state.port });
-  await waitForLoad(pi, ctx, waitMode, state.port);
+  const local = isLocalUrl(state.currentUrl);
+  await runAgentBrowser(pi, [action], ctx, 60_000, { port: state.port, local });
+  await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -604,7 +620,7 @@ export async function evalInBrowser(
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
 
-  const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port });
+  const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
   await markControlledTab(pi, state, ctx);
   const evalFile = artifactPath(state, label, "txt");
   await writeFile(evalFile, output, "utf8");
@@ -1117,13 +1133,24 @@ async function runAgentBrowser(
   args: string[],
   ctx: ExtensionContext,
   timeout: number,
-  options: { allowFailure?: boolean; port?: number } = {},
+  options: { allowFailure?: boolean; port?: number; local?: boolean } = {},
 ): Promise<string> {
-  const fullArgs = options.port ? ["--cdp", String(options.port), ...args] : args;
+  let fullArgs = options.port ? ["--cdp", String(options.port), ...args] : args;
+  let effectiveTimeout = timeout;
+
+  // agent-browser honors --timeout only for `wait` operations (waitForSelector and
+  // --load/--url/--text/--fn); navigation and element actions use a fixed 60s default and
+  // ignore it. So only a `wait` against a local/dev-server target gets the larger budget,
+  // and we keep our own kill-timeout above agent-browser's so its clearer error wins.
+  if (options.local && args[0] === "wait" && !args.includes("--timeout")) {
+    const localMs = localBrowserTimeoutMs();
+    fullArgs = [...fullArgs, "--timeout", String(localMs)];
+    effectiveTimeout = Math.max(timeout, localMs + 15_000);
+  }
 
   const result = (await pi.exec("agent-browser", fullArgs, {
     signal: ctx.signal,
-    timeout,
+    timeout: effectiveTimeout,
   })) as CommandResult;
 
   if (result.code !== 0) {
@@ -1139,7 +1166,7 @@ async function runAgentBrowserJSON(
   args: string[],
   ctx: ExtensionContext,
   timeout: number,
-  options: { port?: number } = {},
+  options: { port?: number; local?: boolean } = {},
 ): Promise<unknown> {
   const argsWithJson = args.includes("--json") ? args : [...args, "--json"];
   const output = await runAgentBrowser(pi, argsWithJson, ctx, timeout, options);
@@ -1169,8 +1196,29 @@ function truncateOutputForError(output: string, max = 200): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
-async function waitForLoad(pi: ExtensionAPI, ctx: ExtensionContext, waitMode: WaitMode, port: number): Promise<void> {
+async function waitForLoad(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  waitMode: WaitMode,
+  port: number,
+  local = false,
+): Promise<void> {
   if (waitMode === "none") return;
+
+  if (local) {
+    // On slow dev servers a fixed 1-2s settle routinely misses the response window, so
+    // wait for the real load state instead — but cap it (PI_BROWSER_LOCAL_SETTLE_MS) and
+    // allowFailure, so pages that never go idle (polling/SSE) proceed after the cap
+    // rather than hanging or erroring.
+    const settleMs = localBrowserSettleMs();
+    const loadState = waitMode === "networkidle" ? "networkidle" : "load";
+    await runAgentBrowser(pi, ["wait", "--load", loadState, "--timeout", String(settleMs)], ctx, settleMs + 15_000, {
+      port,
+      allowFailure: true,
+    });
+    return;
+  }
+
   const ms = waitMode === "networkidle" ? 2000 : 1000;
   await runAgentBrowser(pi, ["wait", String(ms)], ctx, ms + 30_000, { port });
 }

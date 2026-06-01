@@ -208,6 +208,87 @@ export function domainFromUrl(url?: string): string | undefined {
   }
 }
 
+const DEFAULT_LOCAL_TIMEOUT_MS = 180_000;
+const DEFAULT_LOCAL_SETTLE_MS = 30_000;
+
+/**
+ * True when the URL points at the local machine or a local dev server. agent-browser caps
+ * each operation at a 60s default; slow dev servers (cold SSR, first compile, HMR) routinely
+ * blow past that, so callers grant these targets a larger settle/wait budget — see
+ * {@link localBrowserSettleMs} and {@link localBrowserTimeoutMs}.
+ */
+export function isLocalUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    return isLocalHostname(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalHostname(rawHostname: string): boolean {
+  const hostname = rawHostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!hostname) return false;
+
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".test") ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "::ffff:127.0.0.1"
+  ) {
+    return true;
+  }
+
+  if (isPrivateIpv4(hostname)) return true;
+
+  return extraLocalHosts().some((extra) => hostname === extra || hostname.endsWith(`.${extra}`));
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  const octets = hostname.split(".");
+  if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const [a, b] = octets.map(Number);
+  if (a > 255 || b > 255) return false;
+  if (a === 127) return true; // 127.0.0.0/8 loopback
+  if (a === 10) return true; // 10.0.0.0/8 private
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
+  return false;
+}
+
+function extraLocalHosts(): string[] {
+  const raw = process.env.PI_BROWSER_LOCAL_HOSTS;
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase().replace(/^\[|\]$/g, ""))
+    .filter(Boolean);
+}
+
+/**
+ * Per-command timeout (ms) for explicit waits against local/dev-server targets, passed to
+ * agent-browser's global --timeout flag. Override with PI_BROWSER_LOCAL_TIMEOUT_MS
+ * (default 180000 = 3m).
+ */
+export function localBrowserTimeoutMs(): number {
+  const value = Number(process.env.PI_BROWSER_LOCAL_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_LOCAL_TIMEOUT_MS;
+}
+
+/**
+ * Cap (ms) for the automatic post-action settle on local targets — how long to wait for the
+ * page to reach its load state before proceeding anyway. Kept smaller than
+ * {@link localBrowserTimeoutMs} so pages that never go idle (polling/SSE) don't stall every
+ * step. Override with PI_BROWSER_LOCAL_SETTLE_MS (default 30000 = 30s).
+ */
+export function localBrowserSettleMs(): number {
+  const value = Number(process.env.PI_BROWSER_LOCAL_SETTLE_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_LOCAL_SETTLE_MS;
+}
+
 function sanitizeSegment(input: string): string {
   return input.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
 }

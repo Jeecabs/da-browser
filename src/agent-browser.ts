@@ -918,7 +918,6 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
 const CONTROLLED_TAB_BADGE_ID = "__pi_agent_controlled_tab_badge__";
 const CONTROLLED_TAB_STYLE_ID = "__pi_agent_controlled_tab_style__";
 const CONTROLLED_TAB_FAVICON_ATTR = "data-pi-agent-controlled-tab-favicon";
-const CONTROLLED_TAB_LABEL = "REC";
 const CONTROLLED_TAB_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
@@ -933,19 +932,16 @@ const CONTROLLED_TAB_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" view
   </defs>
   <rect width="64" height="64" rx="15" fill="url(#g)"/>
   <rect width="64" height="64" rx="15" fill="url(#hl)"/>
-  <circle cx="32" cy="32" r="12" fill="#ffffff"/>
 </svg>`;
 
-// Marks a controlled tab with a sticky red "recording" banner: a slim full-width
-// line pinned to the very top of the viewport, a soft breathing glow beneath it, and
-// a small monospace pill hanging center with a pulsing live dot. It overlays the page
-// (position:fixed + pointer-events:none) so it never reflows or blocks content, and a
-// matching red record-dot favicon mirrors the signal in the tab strip.
+// Marks a controlled tab with a sticky red border: a slim full-width line pinned to
+// the very top of the viewport with a soft breathing glow beneath it. It overlays the
+// page (position:fixed + pointer-events:none) so it never reflows or blocks content,
+// and a matching red favicon mirrors the signal in the tab strip.
 const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
   const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
   const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
   const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
-  const label = ${JSON.stringify(CONTROLLED_TAB_LABEL)};
   const faviconHref = "data:image/svg+xml," + encodeURIComponent(${JSON.stringify(CONTROLLED_TAB_FAVICON_SVG)});
 
   let icon = document.querySelector("link[" + faviconAttr + "]");
@@ -974,7 +970,6 @@ const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
   style.textContent =
     "@keyframes __pi_rec_slide{from{background-position:0 0}to{background-position:200% 0}}" +
     "@keyframes __pi_rec_breathe{0%,100%{opacity:.4}50%{opacity:.95}}" +
-    "@keyframes __pi_rec_pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.55)}70%{box-shadow:0 0 0 5px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}" +
     sel + "{position:fixed;top:0;left:0;right:0;height:4px;z-index:2147483647;pointer-events:none;" +
       "background:linear-gradient(90deg,#991b1b,#dc2626 22%,#f87171 50%,#dc2626 78%,#991b1b);background-size:200% 100%;" +
       "animation:__pi_rec_slide 5.5s linear infinite;" +
@@ -982,30 +977,13 @@ const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
     sel + "::after{content:'';position:absolute;left:0;right:0;top:100%;height:16px;pointer-events:none;" +
       "background:linear-gradient(to bottom,rgba(239,68,68,.5),rgba(239,68,68,0));" +
       "animation:__pi_rec_breathe 2.6s ease-in-out infinite;}" +
-    sel + ">div{position:absolute;top:100%;left:50%;transform:translateX(-50%);box-sizing:border-box;" +
-      "display:inline-flex;align-items:center;gap:6px;padding:3px 10px 4px;white-space:nowrap;" +
-      "border-radius:0 0 9px 9px;background:linear-gradient(180deg,#dc2626,#b91c1c);color:#fff;" +
-      "font:600 10px/1 ui-monospace,SFMono-Regular,'SF Mono','Cascadia Code','JetBrains Mono',Menlo,Consolas,monospace;" +
-      "letter-spacing:.16em;text-transform:uppercase;" +
-      "box-shadow:0 6px 16px -4px rgba(127,29,29,.7),inset 0 1px 0 rgba(255,255,255,.22);}" +
-    sel + ">div>span{font:inherit;color:inherit;letter-spacing:inherit;}" +
-    sel + ">div>i{width:6px;height:6px;border-radius:50%;background:#fff;font-style:normal;flex:none;" +
-      "animation:__pi_rec_pulse 1.5s ease-out infinite;}" +
     "@media (prefers-reduced-motion: reduce){" +
       sel + "{animation:none}" +
-      sel + "::after{animation:none;opacity:.7}" +
-      sel + ">div>i{animation:none}}";
+      sel + "::after{animation:none;opacity:.7}}";
 
   document.getElementById(badgeId)?.remove();
   const root = document.createElement("div");
   root.id = badgeId;
-  const pill = document.createElement("div");
-  const dot = document.createElement("i");
-  const text = document.createElement("span");
-  text.textContent = label;
-  pill.appendChild(dot);
-  pill.appendChild(text);
-  root.appendChild(pill);
   document.documentElement.appendChild(root);
 })()`;
 

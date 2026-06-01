@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase and Linear helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.73.1+`
 
@@ -76,6 +76,25 @@ A custom pi theme with a stronger Vice City / Miami neon palette and a restraine
 
 `/vicecity song ...` overrides the soundtrack. Exact autoplay works with a Spotify track URL or `spotify:track:...` URI; plain text opens Spotify search results in the local client.
 
+
+### PostHog
+
+Wraps `posthog-cli` for exception reporting and URL-based triage.
+
+**Tools (callable by the LLM):**
+
+| Tool | Description |
+|------|-------------|
+| `posthog_query` | Run read/reporting HogQL through `posthog-cli exp query run` |
+| `posthog_exceptions` | Rank exception groups by fingerprint/type/message, optionally filtered by URL or route tag text |
+| `posthog_exception_urls` | Rank URLs by exception volume and suggest stable `url:*` tags |
+| `posthog_exception_tag_report` | Return exception groups with derived URL/route tags for triage reports |
+
+**Command:** `/posthog exceptions [url] | urls | query <hogql>`
+
+Runtime prerequisite: `posthog-cli` on `PATH`, or set `POSTHOG_CLI_BIN`. Query reporting requires a PostHog token with `query:read`; run `posthog-cli login` or set `POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID`.
+
+Tags are report labels derived from URLs because PostHog events are immutable. To make tags native in PostHog, send the chosen tag as an event property on future exception capture.
 
 ### Fallow
 

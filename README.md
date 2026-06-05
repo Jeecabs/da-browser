@@ -2,7 +2,7 @@
 
 Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
-**Recommended pi version:** `0.73.1+`
+**Recommended pi version:** `0.78.1+`
 
 ## Install
 
@@ -362,7 +362,7 @@ Add a new `.ts` file to `src/` or create a subdirectory with an `index.ts`. Then
 Extensions export a default function that receives the `ExtensionAPI`:
 
 ```typescript
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {

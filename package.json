@@ -23,7 +23,8 @@
       "./src/video/index.ts",
       "./src/excalidraw/index.ts",
       "./src/watchtower.ts",
-      "./src/vicecity/index.ts"
+      "./src/vicecity/index.ts",
+      "./src/audio-glow/index.ts"
     ],
     "themes": [
       "./themes"

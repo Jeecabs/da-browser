@@ -11,6 +11,7 @@
   "pi": {
     "extensions": [
       "./src/index.ts",
+      "./src/start-quote.ts",
       "./src/supabase/index.ts",
       "./src/linear/index.ts",
       "./src/github/index.ts",

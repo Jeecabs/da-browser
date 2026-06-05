@@ -1,4 +1,4 @@
-import type { BuildSystemPromptOptions } from "@mariozechner/pi-coding-agent";
+import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 
 export function hasAnySelectedTool(
   options: Pick<BuildSystemPromptOptions, "selectedTools"> | undefined,

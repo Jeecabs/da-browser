@@ -8,7 +8,7 @@ import {
   formatSize,
   truncateHead,
   truncateTail,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const TOOL_OUTPUT_DIR = path.join(os.tmpdir(), "pi-extension-tool-output");
 

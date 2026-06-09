@@ -17,7 +17,18 @@ import {
   type IsArgsOptions,
   type TabArgsOptions,
 } from "./agent-browser-args.js";
-import type { BrowserState, WaitMode } from "./state.js";
+import {
+  arcRelaunchCommand,
+  CdpError,
+  classifyCdpError,
+  friendlyCdpMessage,
+} from "./cdp-errors.js";
+import {
+  controlledTabLabel,
+  controlledTabMarkScript,
+  CONTROLLED_TAB_CLEAR_SCRIPT,
+} from "./controlled-tab.js";
+import type { BrowserState, ConnectionProbe, WaitMode } from "./state.js";
 import {
   domainFromUrl,
   isLocalUrl,
@@ -37,7 +48,9 @@ export {
   buildSnapshotArgs,
   buildTabArgs,
   buildTraceArgs,
+  CdpError,
 };
+export type { CdpErrorKind } from "./cdp-errors.js";
 export type {
   CaptureAction,
   CaptureArgsOptions,
@@ -83,7 +96,7 @@ export async function connectBrowser(
       summary: [
         `No browser is listening on port ${state.port}.`,
         "Quit Arc and relaunch it with:",
-        `roo /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=${state.port}`,
+        `  ${arcRelaunchCommand(state.port)}`,
       ].join("\n"),
       diagnostics: {
         port: state.port,
@@ -915,103 +928,14 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
   state.tracing = undefined;
 }
 
-const CONTROLLED_TAB_BADGE_ID = "__pi_agent_controlled_tab_badge__";
-const CONTROLLED_TAB_STYLE_ID = "__pi_agent_controlled_tab_style__";
-const CONTROLLED_TAB_FAVICON_ATTR = "data-pi-agent-controlled-tab-favicon";
-const CONTROLLED_TAB_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f87171"/>
-      <stop offset="0.55" stop-color="#dc2626"/>
-      <stop offset="1" stop-color="#991b1b"/>
-    </linearGradient>
-    <radialGradient id="hl" cx="30%" cy="22%" r="70%">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#g)"/>
-  <rect width="64" height="64" rx="15" fill="url(#hl)"/>
-</svg>`;
-
-// Marks a controlled tab with a sticky red border: a slim full-width line pinned to
-// the very top of the viewport with a soft breathing glow beneath it. It overlays the
-// page (position:fixed + pointer-events:none) so it never reflows or blocks content,
-// and a matching red favicon mirrors the signal in the tab strip.
-const CONTROLLED_TAB_MARK_SCRIPT = `(() => {
-  const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
-  const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
-  const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
-  const faviconHref = "data:image/svg+xml," + encodeURIComponent(${JSON.stringify(CONTROLLED_TAB_FAVICON_SVG)});
-
-  let icon = document.querySelector("link[" + faviconAttr + "]");
-  if (!icon) {
-    icon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel*="icon" i]');
-  }
-  if (!icon) {
-    icon = document.createElement("link");
-    icon.rel = "icon";
-    icon.dataset.piAgentControlledTabCreated = "true";
-    (document.head || document.documentElement).appendChild(icon);
-  }
-  if (!icon.hasAttribute(faviconAttr)) {
-    icon.dataset.piAgentControlledTabOriginalHref = icon.getAttribute("href") || "";
-  }
-  icon.setAttribute(faviconAttr, "true");
-  icon.href = faviconHref;
-
-  const sel = "#" + badgeId;
-  let style = document.getElementById(styleId);
-  if (!style) {
-    style = document.createElement("style");
-    style.id = styleId;
-    (document.head || document.documentElement).appendChild(style);
-  }
-  style.textContent =
-    "@keyframes __pi_rec_slide{from{background-position:0 0}to{background-position:200% 0}}" +
-    "@keyframes __pi_rec_breathe{0%,100%{opacity:.28}50%{opacity:.62}}" +
-    sel + "{position:fixed;top:0;left:0;right:0;height:4px;z-index:2147483647;pointer-events:none;" +
-      "background:linear-gradient(90deg,#991b1b,#dc2626 22%,#f87171 50%,#dc2626 78%,#991b1b);background-size:200% 100%;" +
-      "animation:__pi_rec_slide 5.5s linear infinite;" +
-      "box-shadow:0 0 7px 0 rgba(239,68,68,.55),0 4px 15px -6px rgba(220,38,38,.4);}" +
-    sel + "::after{content:'';position:absolute;left:0;right:0;top:100%;height:13px;pointer-events:none;" +
-      "background:linear-gradient(to bottom,rgba(239,68,68,.32),rgba(239,68,68,0));" +
-      "animation:__pi_rec_breathe 2.6s ease-in-out infinite;}" +
-    "@media (prefers-reduced-motion: reduce){" +
-      sel + "{animation:none}" +
-      sel + "::after{animation:none;opacity:.7}}";
-
-  document.getElementById(badgeId)?.remove();
-  const root = document.createElement("div");
-  root.id = badgeId;
-  document.documentElement.appendChild(root);
-})()`;
-
-const CONTROLLED_TAB_CLEAR_SCRIPT = `(() => {
-  const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
-  const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
-  const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
-
-  document.getElementById(badgeId)?.remove();
-  document.getElementById(styleId)?.remove();
-
-  const icon = document.querySelector("link[" + faviconAttr + "]");
-  if (icon) {
-    if (icon.dataset.piAgentControlledTabCreated === "true") {
-      icon.remove();
-    } else {
-      const originalHref = icon.dataset.piAgentControlledTabOriginalHref || "";
-      if (originalHref) icon.setAttribute("href", originalHref);
-      else icon.removeAttribute("href");
-      icon.removeAttribute(faviconAttr);
-      delete icon.dataset.piAgentControlledTabOriginalHref;
-    }
-  }
-})()`;
 
 async function markControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
   if (!resolveControlBannerEnabled()) return;
-  await runAgentBrowser(pi, ["eval", CONTROLLED_TAB_MARK_SCRIPT], ctx, 10_000, {
+  // currentDomain is refreshed just before this call, so it's the live target; lastAction
+  // lags by one step here, so the pill identifies the agent + what it's driving instead.
+  const target = state.currentDomain ?? `cdp:${state.port}`;
+  const labelText = controlledTabLabel(target);
+  await runAgentBrowser(pi, ["eval", controlledTabMarkScript(labelText)], ctx, 10_000, {
     port: state.port,
     allowFailure: true,
   });
@@ -1040,23 +964,20 @@ async function assertAgentBrowserInstalled(pi: ExtensionAPI, ctx: ExtensionConte
   }
 }
 
+interface CdpTarget {
+  type?: string;
+  url?: string;
+  title?: string;
+  webSocketDebuggerUrl?: string;
+}
+
 async function ensurePageTarget(
   pi: ExtensionAPI,
   port: number,
   ctx: ExtensionContext,
 ): Promise<void> {
-  // Check if a page target already exists
-  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/list`], {
-    signal: ctx.signal,
-    timeout: 5_000,
-  })) as CommandResult;
-
-  if (result.code === 0) {
-    try {
-      const targets = JSON.parse(result.stdout) as Array<{ type: string }>;
-      if (targets.some((t) => t.type === "page")) return;
-    } catch { /* fall through to create */ }
-  }
+  const targets = await fetchTargets(pi, port, ctx);
+  if (targets.some((t) => t.type === "page")) return;
 
   // No page target — create one. This opens a blank tab in Arc.
   const create = (await pi.exec(
@@ -1067,6 +988,47 @@ async function ensurePageTarget(
 
   if (create.code !== 0) {
     throw new Error(`Failed to create a page target on port ${port}. Is the browser accepting CDP connections?`);
+  }
+}
+
+// Re-create a page target so a fresh agent-browser attach can succeed. Swallows failures
+// so the caller can fall back to surfacing the original error.
+async function tryEnsureTarget(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<boolean> {
+  try {
+    await ensurePageTarget(pi, port, ctx);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchTargets(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<CdpTarget[]> {
+  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/list`], {
+    signal: ctx.signal,
+    timeout: 5_000,
+  })) as CommandResult;
+  if (result.code !== 0) return [];
+
+  try {
+    const parsed = JSON.parse(result.stdout) as unknown;
+    return Array.isArray(parsed) ? (parsed as CdpTarget[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchBrowserVersion(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<string | undefined> {
+  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/version`], {
+    signal: ctx.signal,
+    timeout: 5_000,
+  })) as CommandResult;
+  if (result.code !== 0) return undefined;
+
+  try {
+    const parsed = JSON.parse(result.stdout) as { Browser?: string };
+    return typeof parsed.Browser === "string" ? parsed.Browser : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -1083,6 +1045,42 @@ async function isPortListening(
   return result.code === 0 && result.stdout.includes(`:${port}`);
 }
 
+/**
+ * Actively probe the debugging port and reconcile state.connected with reality, returning
+ * a ConnectionProbe for status display. Unlike the per-action happy path (which trusts the
+ * last successful call), this hits lsof + /json/list so "connected" is checkable rather
+ * than merely asserted. Used by status tools and on session_start to revalidate restored
+ * state before the first widget paint.
+ */
+export async function verifyConnection(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<ConnectionProbe> {
+  const portListening = await isPortListening(pi, state.port, ctx);
+  if (!portListening) {
+    state.connected = false;
+    return { portListening: false, pageTargets: 0 };
+  }
+
+  const targets = await fetchTargets(pi, state.port, ctx);
+  const pages = targets.filter((t) => t.type === "page");
+  // Best guess at a foreground page for display only — agent-browser picks its own target,
+  // so this is a probe observation, not necessarily the controlled tab.
+  const attached = pages.find((t) => Boolean(t.url) && t.url !== "about:blank") ?? pages[0];
+  const browser = await fetchBrowserVersion(pi, state.port, ctx);
+
+  state.connected = true;
+  state.lastVerifiedAt = Date.now();
+
+  return {
+    portListening: true,
+    pageTargets: pages.length,
+    attachedUrl: typeof attached?.url === "string" ? attached.url : undefined,
+    browser,
+  };
+}
+
 async function refreshCurrentUrl(
   pi: ExtensionAPI,
   state: BrowserState,
@@ -1092,6 +1090,9 @@ async function refreshCurrentUrl(
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
+  // Reached only after the action's main (non-allowFailure) call already succeeded, so the
+  // browser just proved it's alive — record that for the staleness signal.
+  state.lastVerifiedAt = Date.now();
 }
 
 async function refreshDashboardUrl(
@@ -1113,7 +1114,7 @@ async function runAgentBrowser(
   timeout: number,
   options: { allowFailure?: boolean; port?: number; local?: boolean } = {},
 ): Promise<string> {
-  let fullArgs = options.port ? ["--cdp", String(options.port), ...args] : args;
+  let fullArgs = options.port !== undefined ? ["--cdp", String(options.port), ...args] : args;
   let effectiveTimeout = timeout;
 
   // agent-browser honors --timeout only for `wait` operations (waitForSelector and
@@ -1126,16 +1127,44 @@ async function runAgentBrowser(
     effectiveTimeout = Math.max(timeout, localMs + 15_000);
   }
 
-  const result = (await pi.exec("agent-browser", fullArgs, {
-    signal: ctx.signal,
-    timeout: effectiveTimeout,
-  })) as CommandResult;
+  const exec = (): Promise<CommandResult> =>
+    pi.exec("agent-browser", fullArgs, {
+      signal: ctx.signal,
+      timeout: effectiveTimeout,
+    }) as Promise<CommandResult>;
 
-  if (result.code !== 0) {
-    if (options.allowFailure) return "";
-    throw new Error(formatExecFailure("agent-browser", fullArgs, result));
+  let result = await exec();
+  if (result.code === 0) return joinAgentBrowserOutput(result);
+
+  // Best-effort calls (banner injection, url refresh) never heal/retry or throw — a
+  // cosmetic miss must not become a hard failure.
+  if (options.allowFailure) return "";
+
+  let kind = classifyCdpError(combineStreams(result));
+
+  // Self-heal once: a vanished page target is usually recoverable by re-creating one and
+  // letting agent-browser re-attach on retry. Scoped to target-gone (and only when we know
+  // the port) so element/selector errors and a genuinely-down browser still fail fast.
+  if (kind === "target-gone" && options.port !== undefined) {
+    const healed = await tryEnsureTarget(pi, options.port, ctx);
+    if (healed) {
+      result = await exec();
+      if (result.code === 0) return joinAgentBrowserOutput(result);
+      kind = classifyCdpError(combineStreams(result));
+    }
   }
 
+  throw new CdpError(
+    friendlyCdpMessage(kind, options.port, formatExecFailure("agent-browser", fullArgs, result)),
+    kind,
+  );
+}
+
+function combineStreams(result: CommandResult): string {
+  return `${result.stderr ?? ""}\n${result.stdout ?? ""}`;
+}
+
+function joinAgentBrowserOutput(result: CommandResult): string {
   return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
 }
 

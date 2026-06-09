@@ -11,10 +11,17 @@ import {
   buildTraceArgs,
 } from "../src/agent-browser-args.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
+import { classifyCdpError } from "../src/cdp-errors.ts";
+import {
+  controlledTabLabel,
+  controlledTabMarkScript,
+  CONTROLLED_TAB_CLEAR_SCRIPT,
+} from "../src/controlled-tab.ts";
 import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
 import { shouldUseRooForCommand } from "../src/roo/command-policy.ts";
 import { assertReadOnly } from "../src/supabase/api.ts";
 import {
+  connectionHealth,
   createBrowserState,
   mergeBrowserState,
   normalizeRef,
@@ -369,9 +376,60 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
     lastScreenshotFile: undefined,
     lastEvalFile: undefined,
     lastError: undefined,
+    lastVerifiedAt: undefined,
     recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
     tracing: { file: "/tmp/trace.zip", startedAt: 1700000001000 },
   });
+});
+
+test("classifyCdpError maps CDP failures to recovery kinds", () => {
+  assert.equal(
+    classifyCdpError(
+      "✗ Failed to connect via CDP to ws://localhost:9222. Make sure the app is running with --remote-debugging-port=9222",
+    ),
+    "browser-down",
+  );
+  assert.equal(classifyCdpError("net::ERR_CONNECTION_REFUSED"), "browser-down");
+  assert.equal(classifyCdpError("Error: Target closed"), "target-gone");
+  assert.equal(classifyCdpError("No page target found"), "target-gone");
+  assert.equal(classifyCdpError("Protocol error: No target with given id found"), "target-gone");
+  assert.equal(classifyCdpError("Execution context was destroyed"), "target-gone");
+  assert.equal(classifyCdpError("Timeout 30000ms exceeded"), "page-busy");
+  // Action-level errors must NOT be classified as connection failures (no false retry).
+  assert.equal(classifyCdpError("Element not found: @e5"), "unknown");
+  assert.equal(classifyCdpError(""), "unknown");
+});
+
+test("controlled-tab overlay builds safe, valid inject scripts", () => {
+  assert.equal(controlledTabLabel("supabase.com"), "pi agent · supabase.com");
+
+  const script = controlledTabMarkScript(controlledTabLabel("supabase.com"));
+  // Parses as valid JS (document refs aren't evaluated by Function()).
+  assert.doesNotThrow(() => new Function(script));
+  assert.match(script, /pi agent · supabase\.com/);
+  // Label is applied via textContent, not innerHTML.
+  assert.match(script, /\.textContent = labelText/);
+
+  // A label that tries to break out of the JS string is JSON-encoded, so the script stays
+  // valid (no injection) and the payload appears only in escaped form.
+  const payload = '"; alert(1); //';
+  const nasty = controlledTabMarkScript(payload);
+  assert.doesNotThrow(() => new Function(nasty));
+  assert.ok(nasty.includes(JSON.stringify(payload)));
+
+  assert.doesNotThrow(() => new Function(CONTROLLED_TAB_CLEAR_SCRIPT));
+});
+
+test("connectionHealth reflects liveness honestly", () => {
+  const base = createBrowserState("/tmp/proj", 9222, 4848);
+  const now = 1_700_000_000_000;
+
+  assert.equal(connectionHealth({ ...base, connected: false }, now), "down");
+  assert.equal(connectionHealth({ ...base, connected: true, lastVerifiedAt: now }, now + 1_000), "ok");
+  // Connected but not confirmed for > 5 min → suspect (◐ stale), not a confident ●.
+  assert.equal(connectionHealth({ ...base, connected: true, lastVerifiedAt: now }, now + 6 * 60_000), "suspect");
+  // Connected with no verification timestamp yet → no staleness evidence, treat as ok.
+  assert.equal(connectionHealth({ ...base, connected: true }, now), "ok");
 });
 
 test("tmux cx pair helpers normalize names, paths, and persisted state", () => {

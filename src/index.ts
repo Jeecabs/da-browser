@@ -24,7 +24,9 @@ import {
   snapshotBrowserPage,
   tabBrowser,
   traceBrowser,
+  verifyConnection,
   waitInBrowser,
+  CdpError,
   type BrowserActionResult,
   type CaptureAction,
   type EmulateSetting,
@@ -34,6 +36,8 @@ import {
 import {
   browserStatusText,
   browserSummary,
+  connectionGlyph,
+  connectionHealth,
   createBrowserState,
   mergeBrowserState,
   resolveBrowserPort,
@@ -76,6 +80,7 @@ const BROWSER_GUIDELINES = [
   "The connected browser is the user's authenticated Arc session — do not perform mutations the user did not ask for.",
   "browser_record start spawns a fresh browser context (cookies and localStorage preserved); re-snapshot before the next action.",
   "Use browser_is for boolean asserts (visible/enabled/checked) instead of regex-matching browser_get text.",
+  "On a connection error: a lost tab is auto-retried once; if it still fails the browser is likely down — call browser_connect to re-establish the controlled tab, then retry. browser_status actively probes the port, so trust it over assumptions about connection state.",
 ];
 
 export default function (pi: ExtensionAPI) {
@@ -84,7 +89,9 @@ export default function (pi: ExtensionAPI) {
   const refreshUi = (ctx: ExtensionContext): void => {
     if (!ctx.hasUI) return;
     const t = ctx.ui.theme;
-    const dot = state.connected ? t.fg("success", "\u25CF") : t.fg("dim", "\u25CB");
+    const health = connectionHealth(state);
+    const color = health === "ok" ? "success" : health === "suspect" ? "warning" : "dim";
+    const dot = t.fg(color, connectionGlyph(health));
     const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
     ctx.ui.setStatus("browser-ops", `${dot} ${t.fg("muted", label)}`);
   };
@@ -101,6 +108,11 @@ export default function (pi: ExtensionAPI) {
   const handleFailure = (ctx: ExtensionContext, error: unknown): never => {
     const message = error instanceof Error ? error.message : String(error);
     state.lastError = message;
+    // A connection-level failure means the dot should stop claiming we're connected.
+    // Action-level errors (bad selector, element not found) leave connected alone.
+    if (error instanceof CdpError && (error.kind === "browser-down" || error.kind === "target-gone")) {
+      state.connected = false;
+    }
     refreshUi(ctx);
     throw error instanceof Error ? error : new Error(message);
   };
@@ -126,6 +138,15 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     loadStateFromSession(ctx);
+    // Restored state can claim "connected" from a previous session whose browser is long
+    // gone. Revalidate against the live port so the first widget paint is honest.
+    if (state.connected) {
+      try {
+        await verifyConnection(pi, state, ctx);
+      } catch {
+        /* leave restored state as-is if the probe itself fails */
+      }
+    }
     refreshUi(ctx);
   });
 
@@ -157,8 +178,10 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (subcommand === "status") {
+          const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
           refreshUi(ctx);
-          ctx.ui.notify(browserSummary(state), "info");
+          persistCommandState();
+          ctx.ui.notify(browserSummary(state, probe), "info");
           return;
         }
 
@@ -182,15 +205,17 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Show the current browser automation state and artifact locations",
+    description: "Probe the live debugging port and show verified connection state, page-target count, browser version, and artifact locations",
     promptSnippet: "Inspect the browser automation state before continuing a multi-step dashboard task",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
       refreshUi(ctx);
       return {
-        content: [{ type: "text", text: browserSummary(state) }],
+        content: [{ type: "text", text: browserSummary(state, probe) }],
         details: {
+          probe,
           browserState: serializeBrowserState(state),
         },
       };

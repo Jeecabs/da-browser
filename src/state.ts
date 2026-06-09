@@ -22,8 +22,21 @@ export interface BrowserState {
   lastScreenshotFile?: string;
   lastEvalFile?: string;
   lastError?: string;
+  // Wall-clock of the last call that proved the browser responded. Drives the "stale"
+  // (◐) widget state so the connected dot stops claiming certainty it no longer has.
+  lastVerifiedAt?: number;
   recording?: BrowserRecordingState;
   tracing?: BrowserRecordingState;
+}
+
+// Result of actively probing the debugging port (vs. trusting in-memory state). Returned
+// by verifyConnection and rendered in status output so "connected" is checkable, not just
+// asserted.
+export interface ConnectionProbe {
+  portListening: boolean;
+  pageTargets: number;
+  attachedUrl?: string;
+  browser?: string;
 }
 
 export function createBrowserState(
@@ -70,6 +83,7 @@ export function mergeBrowserState(
     lastScreenshotFile: persisted.lastScreenshotFile,
     lastEvalFile: persisted.lastEvalFile,
     lastError: persisted.lastError,
+    lastVerifiedAt: typeof persisted.lastVerifiedAt === "number" ? persisted.lastVerifiedAt : undefined,
     recording: cloneRecording(persisted.recording),
     tracing: cloneRecording(persisted.tracing),
   };
@@ -89,6 +103,7 @@ export function serializeBrowserState(state: BrowserState): Record<string, unkno
     lastScreenshotFile: state.lastScreenshotFile,
     lastEvalFile: state.lastEvalFile,
     lastError: state.lastError,
+    lastVerifiedAt: state.lastVerifiedAt,
     recording: state.recording ? { ...state.recording } : undefined,
     tracing: state.tracing ? { ...state.tracing } : undefined,
   };
@@ -130,16 +145,44 @@ function cloneRecording(input?: BrowserRecordingState): BrowserRecordingState | 
   return { file: input.file, startedAt: input.startedAt };
 }
 
+// How long a verified connection stays "fresh" before the widget downgrades to \u25D0 stale.
+// We never probe in the widget, so after this long we stop asserting the browser is alive.
+const VERIFIED_STALE_MS = 5 * 60_000;
+
+export type ConnectionHealth = "ok" | "suspect" | "down";
+
+// Honest connection state: down when not connected, suspect when connected but not
+// confirmed recently, ok otherwise. Keeps the dot from claiming \u25CF after the browser
+// silently died. `now` is injectable for testing.
+export function connectionHealth(state: BrowserState, now = Date.now()): ConnectionHealth {
+  if (!state.connected) return "down";
+  if (state.lastVerifiedAt !== undefined && now - state.lastVerifiedAt > VERIFIED_STALE_MS) {
+    return "suspect";
+  }
+  return "ok";
+}
+
+export function connectionGlyph(health: ConnectionHealth): string {
+  if (health === "ok") return "\u25CF";
+  if (health === "suspect") return "\u25D0";
+  return "\u25CB";
+}
+
+export function connectionWord(health: ConnectionHealth): string {
+  if (health === "ok") return "connected";
+  if (health === "suspect") return "stale";
+  return "disconnected";
+}
+
 export function browserStatusText(state: BrowserState): string {
-  const dot = state.connected ? "\u25CF" : "\u25CB";
+  const health = connectionHealth(state);
   const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
-  return `${dot} ${label}`;
+  return `${connectionGlyph(health)} ${label}`;
 }
 
 export function browserWidgetLines(state: BrowserState): string[] {
-  const dot = state.connected ? "\u25CF" : "\u25CB";
-  const status = state.connected ? "connected" : "disconnected";
-  const lines = [`${dot} browser  ${status}`];
+  const health = connectionHealth(state);
+  const lines = [`${connectionGlyph(health)} browser  ${connectionWord(health)}`];
 
   if (state.currentDomain) {
     lines.push(`  ${state.currentDomain}`);
@@ -160,16 +203,25 @@ export function browserWidgetLines(state: BrowserState): string[] {
   return lines;
 }
 
-export function browserSummary(state: BrowserState): string {
-  const dot = state.connected ? "\u25CF" : "\u25CB";
+export function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
+  const health = connectionHealth(state);
+  const verified = state.lastVerifiedAt ? `  verified ${formatRelativeTime(state.lastVerifiedAt)}` : "";
   const lines = [
-    `${dot} ${state.connected ? "connected" : "disconnected"}  cdp:${state.port}`,
+    `${connectionGlyph(health)} ${connectionWord(health)}  cdp:${state.port}${verified}`,
     `  url       ${state.currentUrl ?? "-"}`,
     `  domain    ${state.currentDomain ?? "-"}`,
     `  action    ${state.lastAction ?? "-"}`,
     `  snapshot  ${formatRelativeTime(state.lastSnapshotAt)}`,
     `  artifacts ${state.artifactDir}`,
   ];
+
+  // Probe details come from actively hitting the debugging port \u2014 the checkable truth
+  // behind the asserted status above.
+  if (probe) {
+    lines.push(`  port      ${probe.portListening ? "listening" : "not listening"}`);
+    lines.push(`  targets   ${probe.pageTargets} page${probe.pageTargets === 1 ? "" : "s"}`);
+    if (probe.browser) lines.push(`  browser   ${probe.browser}`);
+  }
 
   if (state.dashboardUrl) lines.push(`  dashboard ${state.dashboardUrl}`);
   if (state.recording) lines.push(`  recording ${state.recording.file}`);

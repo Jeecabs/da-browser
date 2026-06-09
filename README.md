@@ -317,6 +317,30 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 
 The extension connects to Arc via Chrome DevTools Protocol (CDP). Arc doesn't expose page targets by default, so the extension automatically creates one — opening a blank tab that inherits your full cookie/auth context. All subsequent commands (`open`, `snapshot`, `click`, etc.) operate on that tab.
 
+The controlled tab is marked with a red top border, a `pi agent · <site>` text pill beneath it, and a red favicon, so it's obvious which tab the agent is driving. Disable the marker with `PI_BROWSER_CONTROL_BANNER=0`.
+
+### Connection state & recovery
+
+Each command is a fresh `agent-browser --cdp <port>` process, so "connected" means *the browser is reachable on the port with a usable page target* — not a held socket. The status indicator reflects that honestly:
+
+- `●` connected — verified reachable recently
+- `◐` stale — was connected, but not confirmed in the last 5 min
+- `○` disconnected — port not listening, or never connected
+
+`/browser status` and the `browser_status` tool actively probe the port (`/json/list`) and report listening state, page-target count, and browser version — trust them over the cached dot.
+
+Recovery is partly automatic: if a command fails because the controlled tab vanished, the extension recreates a page target and retries once. If the browser itself is down, the action fails with the relaunch command instead of a raw CDP error.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Arc is not reachable on CDP port 9222` | Arc quit, crashed, or launched without remote debugging | Relaunch with the command below, then `/browser connect` |
+| `The controlled browser tab is gone` (after auto-retry) | The tab was closed or its page context was destroyed | `/browser connect` to open a fresh controlled tab |
+| Status shows `◐ stale` | No command has confirmed liveness recently | `/browser status` re-probes and flips it to `●` or `○` |
+| Commands act on the wrong tab | agent-browser picks its own target when several tabs are open | Keep the red-bordered controlled tab focused; close stray tabs or re-`/browser connect` |
+| `port listening` but `0 page targets` | Browser up but no page target yet | Next action auto-creates one, or `/browser connect` to create + verify |
+
 ### Runtime prerequisites
 
 - [`agent-browser`](https://github.com/nicholasoxford/agent-browser) installed and on `PATH`

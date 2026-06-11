@@ -537,16 +537,15 @@ test("controlled-tab overlay builds safe, valid inject scripts", () => {
   const script = controlledTabMarkScript(controlledTabLabel("supabase.com"));
   // Parses as valid JS (document refs aren't evaluated by Function()).
   assert.doesNotThrow(() => new Function(script));
-  assert.match(script, /pi agent · supabase\.com/);
-  // Label is applied via textContent, not innerHTML.
-  assert.match(script, /\.textContent = labelText/);
+  assert.doesNotMatch(script, /pi agent · supabase\.com/);
+  assert.doesNotMatch(script, /__pi_agent_controlled_tab_label__/);
+  assert.match(script, /height:2px/);
 
-  // A label that tries to break out of the JS string is JSON-encoded, so the script stays
-  // valid (no injection) and the payload appears only in escaped form.
+  // Labels are no longer rendered into page JS; hostile labels should not appear in script.
   const payload = '"; alert(1); //';
   const nasty = controlledTabMarkScript(payload);
   assert.doesNotThrow(() => new Function(nasty));
-  assert.ok(nasty.includes(JSON.stringify(payload)));
+  assert.ok(!nasty.includes(payload));
 
   assert.doesNotThrow(() => new Function(CONTROLLED_TAB_CLEAR_SCRIPT));
 });

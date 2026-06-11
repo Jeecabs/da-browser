@@ -2,9 +2,9 @@
 // page via `agent-browser eval`. Kept dependency-free (like cdp-errors.ts / agent-browser-args.ts)
 // so the generated scripts are unit-testable without a browser.
 //
-// The overlay has three matching red signals: a slim full-width line pinned to the top of the
-// viewport with a soft breathing glow, a small "pi agent" text pill just beneath it, and a red
-// favicon mirrored in the tab strip. Everything overlays the page (position:fixed +
+// The overlay stays deliberately quiet: a 2px red hairline along the top of the viewport, a
+// small dark chip tucked in the bottom-left corner with a pulsing dot and the target label,
+// and a red favicon mirrored in the tab strip. Everything overlays the page (position:fixed +
 // pointer-events:none) so it never reflows or blocks content.
 
 const CONTROLLED_TAB_BADGE_ID = "__pi_agent_controlled_tab_badge__";
@@ -64,28 +64,22 @@ export function controlledTabMarkScript(labelText: string): string {
   }
   style.textContent =
     "@keyframes __pi_rec_slide{from{background-position:0 0}to{background-position:200% 0}}" +
-    "@keyframes __pi_rec_breathe{0%,100%{opacity:.28}50%{opacity:.62}}" +
-    "@keyframes __pi_rec_pulse{0%,100%{opacity:.5}50%{opacity:1}}" +
-    sel + "{position:fixed;top:0;left:0;right:0;height:4px;z-index:2147483647;pointer-events:none;" +
+    "@keyframes __pi_rec_pulse{0%,100%{opacity:.45}50%{opacity:1}}" +
+    sel + "{position:fixed;top:0;left:0;right:0;height:2px;z-index:2147483647;pointer-events:none;opacity:.85;" +
       "background:linear-gradient(90deg,#991b1b,#dc2626 22%,#f87171 50%,#dc2626 78%,#991b1b);background-size:200% 100%;" +
-      "animation:__pi_rec_slide 5.5s linear infinite;" +
-      "box-shadow:0 0 7px 0 rgba(239,68,68,.55),0 4px 15px -6px rgba(220,38,38,.4);}" +
-    sel + "::after{content:'';position:absolute;left:0;right:0;top:100%;height:13px;pointer-events:none;" +
-      "background:linear-gradient(to bottom,rgba(239,68,68,.32),rgba(239,68,68,0));" +
-      "animation:__pi_rec_breathe 2.6s ease-in-out infinite;}" +
-    lbl + "{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:2147483647;pointer-events:none;" +
-      "display:flex;align-items:center;gap:6px;max-width:min(82vw,560px);box-sizing:border-box;" +
-      "padding:3px 11px 3px 9px;border-radius:999px;" +
-      "font:600 11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em;" +
-      "color:#fff1f1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
-      "background:linear-gradient(180deg,rgba(190,32,32,.94),rgba(135,14,14,.94));" +
-      "box-shadow:0 3px 12px -3px rgba(220,38,38,.55),inset 0 0 0 1px rgba(255,255,255,.14);" +
-      "-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
-    lbl + "::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#fff;" +
-      "box-shadow:0 0 7px 1px rgba(255,255,255,.85);animation:__pi_rec_pulse 2s ease-in-out infinite;}" +
+      "animation:__pi_rec_slide 6s linear infinite;}" +
+    lbl + "{position:fixed;bottom:10px;left:10px;z-index:2147483647;pointer-events:none;" +
+      "display:flex;align-items:center;gap:5px;max-width:40vw;box-sizing:border-box;" +
+      "padding:2px 8px;border-radius:7px;" +
+      "font:500 10px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.01em;" +
+      "color:rgba(255,255,255,.92);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
+      "background:rgba(20,20,22,.72);" +
+      "box-shadow:0 1px 6px rgba(0,0,0,.25),inset 0 0 0 1px rgba(255,255,255,.08);" +
+      "-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}" +
+    lbl + "::before{content:'';flex:none;width:5px;height:5px;border-radius:50%;background:#ef4444;" +
+      "box-shadow:0 0 5px 1px rgba(239,68,68,.6);animation:__pi_rec_pulse 2.2s ease-in-out infinite;}" +
     "@media (prefers-reduced-motion: reduce){" +
       sel + "{animation:none}" +
-      sel + "::after{animation:none;opacity:.7}" +
       lbl + "::before{animation:none}}";
 
   document.getElementById(badgeId)?.remove();

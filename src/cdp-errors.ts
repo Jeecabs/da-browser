@@ -76,6 +76,7 @@ export function friendlyCdpMessage(kind: CdpErrorKind, port: number | undefined,
         "Quit Arc and relaunch it with:",
         `  ${arcRelaunchCommand(typeof port === "number" ? port : 9222)}`,
         "Then run browser_connect.",
+        "If Arc IS running with that port, a stale agent-browser daemon may be the culprit — run `agent-browser doctor --offline --quick` to diagnose.",
       ].join("\n");
     case "target-gone":
       return [

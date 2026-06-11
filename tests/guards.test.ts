@@ -2,14 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  buildEmulateArgs,
   buildFindArgs,
   buildIsArgs,
+  buildReactArgs,
   buildRecordArgs,
+  buildSetArgs,
   buildSnapshotArgs,
   buildTabArgs,
   buildTraceArgs,
+  buildWaitArgs,
+  normalizeTabRef,
 } from "../src/agent-browser-args.ts";
+import {
+  extractBooleanResult,
+  extractGetResult,
+  formatTabTable,
+  normalizeTabList,
+  unwrapCliEnvelope,
+} from "../src/agent-browser-output.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
 import { classifyCdpError } from "../src/cdp-errors.ts";
 import {
@@ -155,17 +165,41 @@ test("buildFindArgs composes locator, action, name, and exact flags", () => {
     ["find", "role", "textbox", "fill", "hello", "--name", "Email"],
   );
 
-  assert.deepEqual(buildFindArgs({ locator: "testid", value: "submit-btn" }), [
-    "find",
-    "testid",
-    "submit-btn",
-  ]);
+  // nth takes the 0-based index as its own positional between locator and selector.
+  assert.deepEqual(
+    buildFindArgs({ locator: "nth", value: ".card", action: "hover", nthIndex: 2 }),
+    ["find", "nth", "2", ".card", "hover"],
+  );
 });
 
-test("buildSnapshotArgs composes -i, -c, -d, and -s flags", () => {
+test("buildFindArgs rejects unsafe or incomplete calls", () => {
+  // The CLI defaults a missing action to click — a locate-only call must never slip through.
+  assert.throws(
+    () => buildFindArgs({ locator: "testid", value: "submit-btn" } as never),
+    /requires an action/,
+  );
+  assert.throws(
+    () => buildFindArgs({ locator: "text", value: "Save", action: "press" as never }),
+    /requires an action/,
+  );
+  assert.throws(
+    () => buildFindArgs({ locator: "label", value: "Email", action: "fill" }),
+    /requires text/,
+  );
+  assert.throws(
+    () => buildFindArgs({ locator: "nth", value: ".card", action: "click" }),
+    /requires nthIndex/,
+  );
+  assert.throws(
+    () => buildFindArgs({ locator: "text", value: "Save", action: "click", nthIndex: 1 }),
+    /only applies to the 'nth' locator/,
+  );
+});
+
+test("buildSnapshotArgs composes -i, -u, -c, -d, and -s flags", () => {
   assert.deepEqual(
-    buildSnapshotArgs({ interactiveOnly: true, compact: true, depth: 3, selector: "main" }),
-    ["snapshot", "-i", "-c", "-d", "3", "-s", "main"],
+    buildSnapshotArgs({ interactiveOnly: true, urls: true, compact: true, depth: 3, selector: "main" }),
+    ["snapshot", "-i", "-u", "-c", "-d", "3", "-s", "main"],
   );
 
   assert.deepEqual(buildSnapshotArgs({ interactiveOnly: true }), ["snapshot", "-i"]);
@@ -173,19 +207,7 @@ test("buildSnapshotArgs composes -i, -c, -d, and -s flags", () => {
   assert.deepEqual(buildSnapshotArgs({ depth: 0 }), ["snapshot", "-d", "0"]);
 });
 
-test("buildFindArgs appends --json when requested", () => {
-  assert.deepEqual(
-    buildFindArgs({ locator: "role", value: "button", json: true }),
-    ["find", "role", "button", "--json"],
-  );
-
-  assert.deepEqual(
-    buildFindArgs({ locator: "role", value: "button", action: "click", json: true }),
-    ["find", "role", "button", "click", "--json"],
-  );
-});
-
-test("buildTabArgs handles list, new, close, and switch", () => {
+test("buildTabArgs uses stable string tab ids and labels", () => {
   assert.deepEqual(buildTabArgs({ action: "list" }), ["tab", "list", "--json"]);
 
   assert.deepEqual(buildTabArgs({ action: "new" }), ["tab", "new"]);
@@ -194,21 +216,35 @@ test("buildTabArgs handles list, new, close, and switch", () => {
     "new",
     "https://example.com",
   ]);
+  assert.deepEqual(buildTabArgs({ action: "new", label: "docs", url: "https://example.com" }), [
+    "tab",
+    "new",
+    "--label",
+    "docs",
+    "https://example.com",
+  ]);
 
   assert.deepEqual(buildTabArgs({ action: "close" }), ["tab", "close"]);
-  assert.deepEqual(buildTabArgs({ action: "close", index: 2 }), ["tab", "close", "2"]);
+  assert.deepEqual(buildTabArgs({ action: "close", tab: "t2" }), ["tab", "close", "t2"]);
+  assert.deepEqual(buildTabArgs({ action: "close", tab: "docs" }), ["tab", "close", "docs"]);
 
-  assert.deepEqual(buildTabArgs({ action: "switch", index: 1 }), ["tab", "switch", "1"]);
+  // Switching has no subcommand: `tab <id|label>`. Bare integers coerce to t-ids.
+  assert.deepEqual(buildTabArgs({ action: "switch", tab: "t3" }), ["tab", "t3"]);
+  assert.deepEqual(buildTabArgs({ action: "switch", tab: "3" }), ["tab", "t3"]);
+  assert.deepEqual(buildTabArgs({ action: "switch", tab: "docs" }), ["tab", "docs"]);
 
-  assert.throws(() => buildTabArgs({ action: "switch" }), /requires an index/);
-  assert.throws(
-    () => buildTabArgs({ action: "new", index: 1 }),
-    /does not accept an index/,
-  );
+  assert.throws(() => buildTabArgs({ action: "switch" }), /requires a tab id/);
+  assert.throws(() => buildTabArgs({ action: "new", tab: "t1" }), /does not accept a tab ref/);
   assert.throws(
     () => buildTabArgs({ action: "list", url: "https://example.com" }),
-    /does not accept url or index/,
+    /does not accept url or tab/,
   );
+});
+
+test("normalizeTabRef coerces bare integers to stable t-ids", () => {
+  assert.equal(normalizeTabRef("2"), "t2");
+  assert.equal(normalizeTabRef(" t2 "), "t2");
+  assert.equal(normalizeTabRef("docs"), "docs");
 });
 
 test("buildIsArgs covers all three checks and requires a selector", () => {
@@ -234,51 +270,146 @@ test("buildIsArgs covers all three checks and requires a selector", () => {
   assert.throws(() => buildIsArgs({ check: "visible", selector: "" }), /requires a selector/);
 });
 
-test("buildEmulateArgs validates per-setting required fields", () => {
+test("buildSetArgs validates per-setting required fields", () => {
   assert.deepEqual(
-    buildEmulateArgs({ setting: "viewport", width: 800, height: 600 }),
-    ["emulate", "viewport", "800", "600"],
+    buildSetArgs({ setting: "viewport", width: 800, height: 600 }),
+    ["set", "viewport", "800", "600"],
   );
   assert.deepEqual(
-    buildEmulateArgs({ setting: "device", device: "iPhone 14" }),
-    ["emulate", "device", "iPhone 14"],
+    buildSetArgs({ setting: "viewport", width: 800, height: 600, scale: 2 }),
+    ["set", "viewport", "800", "600", "2"],
   );
   assert.deepEqual(
-    buildEmulateArgs({ setting: "geo", latitude: 51.5, longitude: -0.1 }),
-    ["emulate", "geo", "51.5", "-0.1"],
-  );
-  assert.deepEqual(buildEmulateArgs({ setting: "offline", offline: true }), [
-    "emulate",
-    "offline",
-    "true",
-  ]);
-  assert.deepEqual(buildEmulateArgs({ setting: "offline", offline: false }), [
-    "emulate",
-    "offline",
-    "false",
-  ]);
-  assert.deepEqual(buildEmulateArgs({ setting: "media", media: "dark" }), [
-    "emulate",
-    "media",
-    "dark",
-  ]);
-  assert.deepEqual(
-    buildEmulateArgs({ setting: "media", media: "light", reducedMotion: true }),
-    ["emulate", "media", "light", "--reduced-motion", "reduce"],
+    buildSetArgs({ setting: "device", device: "iPhone 14" }),
+    ["set", "device", "iPhone 14"],
   );
   assert.deepEqual(
-    buildEmulateArgs({ setting: "media", reducedMotion: false }),
-    ["emulate", "media", "--reduced-motion", "no-preference"],
+    buildSetArgs({ setting: "geo", latitude: 51.5, longitude: -0.1 }),
+    ["set", "geo", "51.5", "-0.1"],
+  );
+  // Offline toggles use on/off words, not booleans.
+  assert.deepEqual(buildSetArgs({ setting: "offline", offline: true }), ["set", "offline", "on"]);
+  assert.deepEqual(buildSetArgs({ setting: "offline", offline: false }), ["set", "offline", "off"]);
+  // Media options are positional tokens; reduced motion has no negative token.
+  assert.deepEqual(buildSetArgs({ setting: "media", media: "dark" }), ["set", "media", "dark"]);
+  assert.deepEqual(
+    buildSetArgs({ setting: "media", media: "light", reducedMotion: true }),
+    ["set", "media", "light", "reduced-motion"],
+  );
+  assert.deepEqual(
+    buildSetArgs({ setting: "media", reducedMotion: true }),
+    ["set", "media", "reduced-motion"],
+  );
+  assert.deepEqual(
+    buildSetArgs({ setting: "headers", headers: { "X-Key": "v" } }),
+    ["set", "headers", '{"X-Key":"v"}'],
+  );
+  assert.deepEqual(
+    buildSetArgs({ setting: "credentials", username: "admin", password: "secret" }),
+    ["set", "credentials", "admin", "secret"],
   );
 
-  assert.throws(() => buildEmulateArgs({ setting: "viewport", width: 800 }), /requires width and height/);
-  assert.throws(() => buildEmulateArgs({ setting: "device" }), /requires device name/);
-  assert.throws(
-    () => buildEmulateArgs({ setting: "geo", latitude: 51.5 }),
-    /requires latitude and longitude/,
+  assert.throws(() => buildSetArgs({ setting: "viewport", width: 800 }), /requires width and height/);
+  assert.throws(() => buildSetArgs({ setting: "device" }), /requires device name/);
+  assert.throws(() => buildSetArgs({ setting: "geo", latitude: 51.5 }), /requires latitude and longitude/);
+  assert.throws(() => buildSetArgs({ setting: "offline" }), /requires offline boolean/);
+  assert.throws(() => buildSetArgs({ setting: "media", reducedMotion: false }), /requires media/);
+  assert.throws(() => buildSetArgs({ setting: "headers", headers: {} }), /non-empty headers/);
+  assert.throws(() => buildSetArgs({ setting: "credentials", username: "admin" }), /username and password/);
+});
+
+test("buildWaitArgs requires exactly one mode and composes flags", () => {
+  assert.deepEqual(buildWaitArgs({ selector: "@e3" }), ["wait", "@e3"]);
+  assert.deepEqual(buildWaitArgs({ selector: "#spinner", state: "hidden" }), [
+    "wait",
+    "#spinner",
+    "--state",
+    "hidden",
+  ]);
+  assert.deepEqual(buildWaitArgs({ ms: 1500 }), ["wait", "1500"]);
+  assert.deepEqual(buildWaitArgs({ text: "Saved" }), ["wait", "--text", "Saved"]);
+  assert.deepEqual(buildWaitArgs({ urlPattern: "**/dashboard" }), ["wait", "--url", "**/dashboard"]);
+  assert.deepEqual(buildWaitArgs({ load: "networkidle" }), ["wait", "--load", "networkidle"]);
+  assert.deepEqual(buildWaitArgs({ fn: "window.ready" }), ["wait", "--fn", "window.ready"]);
+  assert.deepEqual(buildWaitArgs({ text: "Saved", timeoutMs: 60000 }), [
+    "wait",
+    "--text",
+    "Saved",
+    "--timeout",
+    "60000",
+  ]);
+
+  assert.throws(() => buildWaitArgs({}), /exactly one of/);
+  assert.throws(() => buildWaitArgs({ selector: "@e3", text: "Saved" }), /exactly one of/);
+  assert.throws(() => buildWaitArgs({ text: "Saved", state: "hidden" }), /state only applies/);
+});
+
+test("buildReactArgs maps commands and validates inspect", () => {
+  assert.deepEqual(buildReactArgs({ command: "tree" }), ["react", "tree"]);
+  assert.deepEqual(buildReactArgs({ command: "inspect", fiberId: 42 }), ["react", "inspect", "42"]);
+  assert.deepEqual(buildReactArgs({ command: "renders-start" }), ["react", "renders", "start"]);
+  assert.deepEqual(buildReactArgs({ command: "renders-stop" }), ["react", "renders", "stop"]);
+  assert.deepEqual(buildReactArgs({ command: "suspense" }), ["react", "suspense"]);
+  assert.deepEqual(buildReactArgs({ command: "suspense", onlyDynamic: true }), [
+    "react",
+    "suspense",
+    "--only-dynamic",
+  ]);
+
+  assert.throws(() => buildReactArgs({ command: "inspect" }), /requires fiberId/);
+});
+
+test("unwrapCliEnvelope unwraps data and throws CLI errors", () => {
+  assert.deepEqual(
+    unwrapCliEnvelope({ success: true, data: { title: "Home" }, error: null }),
+    { title: "Home" },
   );
-  assert.throws(() => buildEmulateArgs({ setting: "offline" }), /requires offline boolean/);
-  assert.throws(() => buildEmulateArgs({ setting: "media" }), /requires media .* or reducedMotion/);
+  assert.throws(
+    () => unwrapCliEnvelope({ success: false, data: null, error: "Element not found." }),
+    /Element not found/,
+  );
+  // Non-envelope shapes pass through untouched.
+  assert.deepEqual(unwrapCliEnvelope([1, 2]), [1, 2]);
+  assert.equal(unwrapCliEnvelope("plain"), "plain");
+});
+
+test("extractGetResult and extractBooleanResult read named data fields", () => {
+  assert.equal(extractGetResult("title", { title: "Home" }), "Home");
+  assert.equal(extractGetResult("url", { url: "https://x.dev" }), "https://x.dev");
+  assert.equal(extractGetResult("attr", { origin: "https://x.dev", value: "btn primary" }), "btn primary");
+  assert.equal(extractGetResult("count", { count: 12, selector: "a" }), 12);
+  assert.equal(extractGetResult("cdp-url", { cdpUrl: "ws://127.0.0.1:9222/x" }), "ws://127.0.0.1:9222/x");
+  // box has no wrapper key — the data object IS the box.
+  assert.deepEqual(extractGetResult("box", { x: 0, y: 1, width: 2, height: 3 }), {
+    x: 0,
+    y: 1,
+    width: 2,
+    height: 3,
+  });
+  // origin noise is stripped before lone-key unwrapping.
+  assert.equal(extractGetResult("text", { origin: "https://x.dev", text: "hello" }), "hello");
+
+  assert.equal(extractBooleanResult("visible", { origin: "https://x.dev", visible: true }), true);
+  assert.equal(extractBooleanResult("enabled", { enabled: false, origin: "https://x.dev" }), false);
+  assert.equal(extractBooleanResult("checked", true), true);
+  assert.throws(() => extractBooleanResult("visible", { origin: "https://x.dev" }), /expected a boolean/);
+});
+
+test("normalizeTabList and formatTabTable surface stable ids and labels", () => {
+  const tabs = normalizeTabList({
+    tabs: [
+      { tabId: "t2", label: null, active: true, title: "Home", url: "https://x.dev", type: "page" },
+      { tabId: "t3", label: "docs", active: false, title: "Docs", url: "https://x.dev/docs", type: "page" },
+    ],
+  });
+  assert.equal(tabs.length, 2);
+
+  const table = formatTabTable(tabs);
+  assert.match(table, /t2 \*/);
+  assert.match(table, /t3 {3}\[docs\] Docs/);
+  assert.equal(formatTabTable([]), "(no tabs)");
+
+  assert.deepEqual(normalizeTabList({ unexpected: true }), []);
 });
 
 test("buildRecordArgs and buildTraceArgs cover start with/without label and stop", () => {

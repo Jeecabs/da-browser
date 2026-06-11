@@ -1,5 +1,7 @@
 export interface SnapshotArgsOptions {
   interactiveOnly?: boolean;
+  /** Include href URLs on link elements (`-u`). */
+  urls?: boolean;
   compact?: boolean;
   depth?: number;
   selector?: string;
@@ -8,29 +10,57 @@ export interface SnapshotArgsOptions {
 export function buildSnapshotArgs(opts: SnapshotArgsOptions): string[] {
   const args = ["snapshot"];
   if (opts.interactiveOnly) args.push("-i");
+  if (opts.urls) args.push("-u");
   if (opts.compact) args.push("-c");
   if (opts.depth != null) args.push("-d", String(opts.depth));
   if (opts.selector) args.push("-s", opts.selector);
   return args;
 }
 
+export const FIND_ACTIONS = ["click", "fill", "type", "hover", "focus", "check", "uncheck"] as const;
+export type FindAction = (typeof FIND_ACTIONS)[number];
+
+const FIND_ACTIONS_WITH_TEXT = new Set<FindAction>(["fill", "type"]);
+// Actions that change page state and therefore invalidate snapshot refs.
+export const MUTATING_FIND_ACTIONS = new Set<FindAction>(["click", "fill", "type", "check", "uncheck"]);
+
 export interface FindArgsOptions {
   locator: string;
   value: string;
-  action?: string;
+  /**
+   * Required: the CLI treats a missing action as `click` (since ~0.25), so an
+   * accidental "just locate" call would mutate the page.
+   */
+  action: FindAction;
+  /** 0-based match index, required when locator is "nth". */
+  nthIndex?: number;
   text?: string;
   name?: string;
   exact?: boolean;
-  json?: boolean;
 }
 
 export function buildFindArgs(params: FindArgsOptions): string[] {
-  const args = ["find", params.locator, params.value];
-  if (params.action) args.push(params.action);
+  if (!params.action || !(FIND_ACTIONS as readonly string[]).includes(params.action)) {
+    throw new Error(
+      `browser_find requires an action (${FIND_ACTIONS.join(", ")}) — agent-browser defaults a missing action to click.`,
+    );
+  }
+  if (FIND_ACTIONS_WITH_TEXT.has(params.action) && params.text === undefined) {
+    throw new Error(`browser_find action '${params.action}' requires text.`);
+  }
+  if (params.locator === "nth" && params.nthIndex === undefined) {
+    throw new Error("browser_find locator 'nth' requires nthIndex (0-based).");
+  }
+  if (params.locator !== "nth" && params.nthIndex !== undefined) {
+    throw new Error("browser_find nthIndex only applies to the 'nth' locator.");
+  }
+
+  const args = ["find", params.locator];
+  if (params.locator === "nth") args.push(String(params.nthIndex));
+  args.push(params.value, params.action);
   if (params.text !== undefined) args.push(params.text);
   if (params.name) args.push("--name", params.name);
   if (params.exact) args.push("--exact");
-  if (params.json) args.push("--json");
   return args;
 }
 
@@ -39,39 +69,51 @@ export type TabAction = "list" | "new" | "close" | "switch";
 export interface TabArgsOptions {
   action: TabAction;
   url?: string;
-  index?: number;
+  /** Memorable label for `new` (interchangeable with ids in later tab refs). */
+  label?: string;
+  /** Stable tab id like `t2` (or a user-assigned label) for close/switch. */
+  tab?: string;
+}
+
+/**
+ * Tabs use stable string ids (`t1`, `t2`, …) since agent-browser 0.26; bare integers are
+ * rejected by the CLI. Models habitually pass `2`, so coerce digits to `t2` here.
+ */
+export function normalizeTabRef(tab: string): string {
+  const trimmed = tab.trim();
+  return /^\d+$/.test(trimmed) ? `t${trimmed}` : trimmed;
 }
 
 export function buildTabArgs(params: TabArgsOptions): string[] {
-  const args = ["tab", params.action];
   switch (params.action) {
     case "list":
-      if (params.url !== undefined || params.index !== undefined) {
-        throw new Error("browser_tab list does not accept url or index.");
+      if (params.url !== undefined || params.tab !== undefined) {
+        throw new Error("browser_tab list does not accept url or tab.");
       }
-      args.push("--json");
-      return args;
-    case "new":
-      if (params.index !== undefined) {
-        throw new Error("browser_tab new does not accept an index.");
+      return ["tab", "list", "--json"];
+    case "new": {
+      if (params.tab !== undefined) {
+        throw new Error("browser_tab new does not accept a tab ref; use label to name the new tab.");
       }
+      const args = ["tab", "new"];
+      if (params.label) args.push("--label", params.label.trim());
       if (params.url) args.push(params.url);
       return args;
+    }
     case "close":
       if (params.url !== undefined) {
         throw new Error("browser_tab close does not accept a url.");
       }
-      if (params.index !== undefined) args.push(String(params.index));
-      return args;
+      return params.tab === undefined ? ["tab", "close"] : ["tab", "close", normalizeTabRef(params.tab)];
     case "switch":
       if (params.url !== undefined) {
         throw new Error("browser_tab switch does not accept a url.");
       }
-      if (params.index === undefined) {
-        throw new Error("browser_tab switch requires an index.");
+      if (params.tab === undefined || !params.tab.trim()) {
+        throw new Error("browser_tab switch requires a tab id (like t2) or label.");
       }
-      args.push(String(params.index));
-      return args;
+      // Switching has no subcommand in the CLI: `tab <id|label>`.
+      return ["tab", normalizeTabRef(params.tab)];
     default: {
       const exhaustive: never = params.action;
       throw new Error(`Unknown browser_tab action: ${String(exhaustive)}`);
@@ -93,59 +135,170 @@ export function buildIsArgs(params: IsArgsOptions): string[] {
   return ["is", params.check, params.selector, "--json"];
 }
 
-export type EmulateSetting = "viewport" | "device" | "geo" | "offline" | "media";
+export type SetSetting = "viewport" | "device" | "geo" | "offline" | "media" | "headers" | "credentials";
 
-export interface EmulateArgsOptions {
-  setting: EmulateSetting;
+export interface SetArgsOptions {
+  setting: SetSetting;
   width?: number;
   height?: number;
+  /** Device scale factor for viewport, e.g. 2 for retina screenshots. */
+  scale?: number;
   device?: string;
   latitude?: number;
   longitude?: number;
   offline?: boolean;
   media?: "dark" | "light";
   reducedMotion?: boolean;
+  /** Extra HTTP headers for `setting: "headers"`. */
+  headers?: Record<string, string>;
+  username?: string;
+  password?: string;
 }
 
-export function buildEmulateArgs(params: EmulateArgsOptions): string[] {
-  const args = ["emulate", params.setting];
+export function buildSetArgs(params: SetArgsOptions): string[] {
+  const args = ["set", params.setting];
   switch (params.setting) {
     case "viewport":
       if (params.width === undefined || params.height === undefined) {
-        throw new Error("browser_emulate viewport requires width and height.");
+        throw new Error("browser_set viewport requires width and height.");
       }
       args.push(String(params.width), String(params.height));
+      if (params.scale !== undefined) args.push(String(params.scale));
       return args;
     case "device":
       if (!params.device) {
-        throw new Error("browser_emulate device requires device name.");
+        throw new Error("browser_set device requires device name.");
       }
       args.push(params.device);
       return args;
     case "geo":
       if (params.latitude === undefined || params.longitude === undefined) {
-        throw new Error("browser_emulate geo requires latitude and longitude.");
+        throw new Error("browser_set geo requires latitude and longitude.");
       }
       args.push(String(params.latitude), String(params.longitude));
       return args;
     case "offline":
       if (params.offline === undefined) {
-        throw new Error("browser_emulate offline requires offline boolean.");
+        throw new Error("browser_set offline requires offline boolean.");
       }
-      args.push(params.offline ? "true" : "false");
+      args.push(params.offline ? "on" : "off");
       return args;
     case "media":
-      if (!params.media && params.reducedMotion === undefined) {
-        throw new Error("browser_emulate media requires media (dark|light) or reducedMotion.");
+      // The CLI takes positional tokens; re-running without reduced-motion clears it,
+      // so reducedMotion=false just omits the token (and needs media to emit anything).
+      if (!params.media && params.reducedMotion !== true) {
+        throw new Error("browser_set media requires media (dark|light) and/or reducedMotion=true.");
       }
       if (params.media) args.push(params.media);
-      if (params.reducedMotion !== undefined) {
-        args.push("--reduced-motion", params.reducedMotion ? "reduce" : "no-preference");
+      if (params.reducedMotion === true) args.push("reduced-motion");
+      return args;
+    case "headers":
+      if (!params.headers || Object.keys(params.headers).length === 0) {
+        throw new Error("browser_set headers requires a non-empty headers object.");
       }
+      args.push(JSON.stringify(params.headers));
+      return args;
+    case "credentials":
+      if (!params.username || params.password === undefined) {
+        throw new Error("browser_set credentials requires username and password.");
+      }
+      args.push(params.username, params.password);
       return args;
     default: {
       const exhaustive: never = params.setting;
-      throw new Error(`Unknown browser_emulate setting: ${String(exhaustive)}`);
+      throw new Error(`Unknown browser_set setting: ${String(exhaustive)}`);
+    }
+  }
+}
+
+export type WaitLoadState = "load" | "domcontentloaded" | "networkidle";
+export type WaitElementState = "visible" | "hidden" | "attached" | "detached";
+
+export interface WaitArgsOptions {
+  /** CSS selector or @ref to wait for. */
+  selector?: string;
+  /** Plain time wait in milliseconds (last resort). */
+  ms?: number;
+  /** Wait until this text appears on the page (substring match). */
+  text?: string;
+  /** Wait until the URL matches a glob pattern like **\/dashboard. */
+  urlPattern?: string;
+  /** Wait for a load state. */
+  load?: WaitLoadState;
+  /** Wait until a JS expression is truthy. */
+  fn?: string;
+  /** Element state to wait for (selector mode only), e.g. hidden to wait for a spinner to go away. */
+  state?: WaitElementState;
+  timeoutMs?: number;
+}
+
+export function buildWaitArgs(params: WaitArgsOptions): string[] {
+  const modes = [
+    params.selector !== undefined ? "selector" : null,
+    params.ms !== undefined ? "ms" : null,
+    params.text !== undefined ? "text" : null,
+    params.urlPattern !== undefined ? "urlPattern" : null,
+    params.load !== undefined ? "load" : null,
+    params.fn !== undefined ? "fn" : null,
+  ].filter(Boolean);
+
+  if (modes.length !== 1) {
+    throw new Error(
+      `browser_wait requires exactly one of selector, ms, text, urlPattern, load, or fn (got ${modes.length ? modes.join(", ") : "none"}).`,
+    );
+  }
+  if (params.state !== undefined && params.selector === undefined) {
+    throw new Error("browser_wait state only applies when waiting on a selector.");
+  }
+
+  const args = ["wait"];
+  if (params.selector !== undefined) {
+    args.push(params.selector);
+    if (params.state) args.push("--state", params.state);
+  } else if (params.ms !== undefined) {
+    args.push(String(params.ms));
+  } else if (params.text !== undefined) {
+    args.push("--text", params.text);
+  } else if (params.urlPattern !== undefined) {
+    args.push("--url", params.urlPattern);
+  } else if (params.load !== undefined) {
+    args.push("--load", params.load);
+  } else if (params.fn !== undefined) {
+    args.push("--fn", params.fn);
+  }
+
+  if (params.timeoutMs !== undefined) args.push("--timeout", String(params.timeoutMs));
+  return args;
+}
+
+export type ReactCommand = "tree" | "inspect" | "renders-start" | "renders-stop" | "suspense";
+
+export interface ReactArgsOptions {
+  command: ReactCommand;
+  /** Fiber id from `react tree`, required for inspect. */
+  fiberId?: number;
+  /** Hide the static list in suspense output. */
+  onlyDynamic?: boolean;
+}
+
+export function buildReactArgs(params: ReactArgsOptions): string[] {
+  switch (params.command) {
+    case "tree":
+      return ["react", "tree"];
+    case "inspect":
+      if (params.fiberId === undefined) {
+        throw new Error("browser_react inspect requires fiberId (from react tree output).");
+      }
+      return ["react", "inspect", String(params.fiberId)];
+    case "renders-start":
+      return ["react", "renders", "start"];
+    case "renders-stop":
+      return ["react", "renders", "stop"];
+    case "suspense":
+      return params.onlyDynamic ? ["react", "suspense", "--only-dynamic"] : ["react", "suspense"];
+    default: {
+      const exhaustive: never = params.command;
+      throw new Error(`Unknown browser_react command: ${String(exhaustive)}`);
     }
   }
 }

@@ -61,7 +61,7 @@ export function classifyCdpError(text: string): CdpErrorKind {
 }
 
 export function arcRelaunchCommand(port: number): string {
-  return `roo start --name arc /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=${port}`;
+  return `whiskd start --name arc /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=${port}`;
 }
 
 // Turns a classified failure into an actionable message for the agent. Recoverable kinds

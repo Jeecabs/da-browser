@@ -29,7 +29,7 @@ The secondary value of the package: giving the coding agent dependable tools tha
 _Avoid_: Autonomous operation, unrestricted automation
 
 **Integration Module**:
-A focused extension entrypoint for one workflow surface such as browser automation, Fallow codebase intelligence, Linear, Supabase, roo, GitHub review, Watchtower incoming-change monitoring, or Vice City chrome.
+A focused extension entrypoint for one workflow surface such as browser automation, Fallow codebase intelligence, Linear, Supabase, whiskd, GitHub review, Watchtower incoming-change monitoring, or Vice City chrome.
 _Avoid_: Plugin subsystem, framework layer
 
 **Free Browser Automation**:
@@ -60,8 +60,8 @@ _Avoid_: Ad-hoc grep cleanup, LLM-only whole-codebase reasoning
 A cleanup workflow where automatic fixes are previewed with dry-run before applying, and Fallow's limited auto-fix scope is respected: unused exports/dependencies are automatic, unused files and refactors remain normal code edits.
 _Avoid_: Blind deletion, broad formatter-style mutation
 
-**Strict Roo Gate**:
-A bash interception rule that forces likely long-running local processes through roo, accepting false positives to avoid hung agent turns.
+**Strict Whiskd Gate**:
+A bash interception rule that forces likely long-running local processes through whiskd, accepting false positives to avoid hung agent turns.
 _Avoid_: Best-effort process guidance, permissive bash for dev servers
 
 **Review Learning**:
@@ -89,7 +89,7 @@ Session-scoped UI or monitoring preference such as Vice City mode or Watchtower 
 _Avoid_: Agent reasoning state, global package config
 
 **External Truth**:
-State owned outside pi, such as roo process metadata or Linear issue data, that should be rediscovered instead of persisted as canonical.
+State owned outside pi, such as whiskd process metadata or Linear issue data, that should be rediscovered instead of persisted as canonical.
 _Avoid_: Cached workflow state
 
 **Truncated Tool Output**:
@@ -133,7 +133,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - **User-Directed Linear Automation** is allowed; Linear actions need a user request to check or change Linear, but do not need extra confirmation prompts after that request.
 - **Read-Only Supabase Access** supports diagnosis; database writes belong in application code or migrations, not ad-hoc tools.
 - The Supabase read-only boundary is pragmatic: lexical DML/DDL blocking is acceptable for the Trusted Machine, even though PostgreSQL side-effect functions cannot be perfectly detected.
-- A **Strict Roo Gate** blocks likely long-running bash commands; false positives are acceptable because roo is safer for inspectable processes.
+- A **Strict Whiskd Gate** blocks likely long-running bash commands; false positives are acceptable because whiskd is safer for inspectable processes.
 - **Review Learnings** stay append-only and are injected only into explicit review/learning workflows.
 - A **Tripwire Ledger** should stay opt-in, branch-scoped, low-noise, deterministic-first, and visible through pi-native TUI surfaces; model review is exception-only after risk budget crossing.
 - The **Watchtower Monitor** remains user-enabled rather than always-on.
@@ -142,7 +142,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - Long tool outputs should become **Truncated Tool Output** with visible full-output artifact paths.
 - Fallow tools should default to JSON output for agent workflows and save/truncate large reports rather than forcing human parsing.
 - **Human Commands** should trigger user-facing workflows; **Agent Tools** should expose workflow primitives the agent can safely execute.
-- Testing should stay limited to **Light Guard Tests** for pure helpers such as SQL read-only checks, roo command detection, argument compatibility, and state serialization.
+- Testing should stay limited to **Light Guard Tests** for pure helpers such as SQL read-only checks, whiskd command detection, argument compatibility, and state serialization.
 - A **Recoverable Prerequisite Failure** should explain the missing prerequisite and the next command or setup step when possible.
 - **Trusted Secret Handling** means do not include token values in status, diagnostics, or expected errors; broad output redaction is not required.
 
@@ -160,4 +160,4 @@ _Avoid_: Secret management platform, transcript sanitizer
 - Browser surface ambiguity resolved: use a **Curated Browser Wrapper** rather than wrapping every agent-browser command one-by-one.
 - Linear automation safety ambiguity resolved: Linear actions are **User-Directed Linear Automation**; the agent must be asked to check or change Linear, but should not add extra confirmation prompts once asked.
 - Supabase automation boundary resolved: keep **Read-Only Supabase Access**; do not add database write tools.
-- Process-management ambiguity resolved: keep a **Strict Roo Gate** for local dev servers/watchers/tunnels, while leaving Docker/Podman to native lifecycle commands.
+- Process-management ambiguity resolved: keep a **Strict Whiskd Gate** for local dev servers/watchers/tunnels, while leaving Docker/Podman to native lifecycle commands.

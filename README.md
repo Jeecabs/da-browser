@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supervisor tripwires, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, whiskd process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supervisor tripwires, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.78.1+`
 
@@ -154,24 +154,24 @@ Tripwires currently cover dangerous bash (`rm -rf`, `sudo`, force push, destruct
 
 Presentation uses pi-native TUI surfaces: a width-aware risk ribbon above the editor, `/supervisor open` as a right-docked overlay with keyboard controls (`r` review, `a` acknowledge, `A` acknowledge all, `+/-` budget, `f` fix prompt, `i` intervention, `c` clear), a custom renderer for `supervisor-review` messages, a custom working indicator during review, `/ok` rule completions, and `/tree` labels for blocker branches.
 
-### roo
+### whiskd
 
-Wraps the [roo](https://github.com/Jeecabs/roo) process manager into pi tools so the agent can start background processes and read their logs.
+Wraps the [whiskd](https://github.com/Jeecabs/whiskd) process manager into pi tools so the agent can start background processes and read their logs.
 
-The extension also teaches pi to prefer roo for long-running or inspectable commands. Things like `pnpm run dev`, `npm run dev`, `vite`, `next dev`, tunnels, and watchers should be started with `roo_start`, inspected with `roo_logs`, and stopped with `roo_stop`. Matching long-lived local-process commands are blocked from the built-in `bash` tool so the agent retries with roo instead. Docker/Podman-style workflows are intentionally left alone so the agent can use their native lifecycle and log inspection commands.
+The extension also teaches pi to prefer whiskd for long-running or inspectable commands. Things like `pnpm run dev`, `npm run dev`, `vite`, `next dev`, tunnels, and watchers should be started with `whiskd_start`, inspected with `whiskd_logs`, and stopped with `whiskd_stop`. Matching long-lived local-process commands are blocked from the built-in `bash` tool so the agent retries with whiskd instead. Docker/Podman-style workflows are intentionally left alone so the agent can use their native lifecycle and log inspection commands.
 
 **Tools (callable by the LLM):**
 
 | Tool | Description |
 |------|-------------|
-| `roo_status` | List all roo-managed processes globally (name, status, pid, uptime, cmd, cwd, log path) |
-| `roo_start` | Start a background process (auto-named from command, e.g. `npm run dev` → `dev`) |
-| `roo_stop` | Stop a process by name |
-| `roo_logs` | Read last N lines of a process's log output |
+| `whiskd_status` | List all whiskd-managed processes globally (name, status, pid, uptime, cmd, cwd, log path) |
+| `whiskd_start` | Start a background process (auto-named from command, e.g. `npm run dev` → `dev`) |
+| `whiskd_stop` | Stop a process by name |
+| `whiskd_logs` | Read last N lines of a process's log output |
 
 The status bar shows a yellow dot with the process name when one is running, or a count when multiple are active.
 
-**Runtime prerequisite:** [`roo`](https://github.com/Jeecabs/roo) installed and on `PATH`.
+**Runtime prerequisite:** [`whiskd`](https://github.com/Jeecabs/whiskd) installed and on `PATH`.
 
 ### tmux cx pair
 
@@ -371,7 +371,7 @@ Recovery is partly automatic: if a command fails because the controlled tab vani
 - Arc launched with remote debugging:
 
 ```bash
-roo start --name arc /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
+whiskd start --name arc /Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
 ```
 
 The `/browser connect` command checks for both and tells you what's missing.

@@ -18,7 +18,7 @@
       "./src/posthog/index.ts",
       "./src/fallow/index.ts",
       "./src/supervisor/index.ts",
-      "./src/roo/index.ts",
+      "./src/whiskd/index.ts",
       "./src/tmux-cx-pair/index.ts",
       "./src/html-artifacts/index.ts",
       "./src/video/index.ts",

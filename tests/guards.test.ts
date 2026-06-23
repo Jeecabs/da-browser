@@ -28,7 +28,7 @@ import {
   CONTROLLED_TAB_CLEAR_SCRIPT,
 } from "../src/controlled-tab.ts";
 import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
-import { shouldUseRooForCommand } from "../src/roo/command-policy.ts";
+import { shouldUseWhiskdForCommand } from "../src/whiskd/command-policy.ts";
 import { assertReadOnly } from "../src/supabase/api.ts";
 import {
   connectionHealth,
@@ -125,7 +125,7 @@ test("fallow args normalize @ paths and append common flags", () => {
   ]);
 });
 
-test("shouldUseRooForCommand catches long-running local commands and leaves containers alone", () => {
+test("shouldUseWhiskdForCommand catches long-running local commands and leaves containers alone", () => {
   for (const command of [
     "pnpm run dev",
     "npm start",
@@ -135,7 +135,7 @@ test("shouldUseRooForCommand catches long-running local commands and leaves cont
     "ngrok http 3000",
     "node --watch server.js",
   ]) {
-    assert.equal(shouldUseRooForCommand(command), true, command);
+    assert.equal(shouldUseWhiskdForCommand(command), true, command);
   }
 
   for (const command of [
@@ -143,9 +143,9 @@ test("shouldUseRooForCommand catches long-running local commands and leaves cont
     "npm test -- --runInBand",
     "docker compose up -d",
     "podman logs app",
-    "roo start npm run dev",
+    "whiskd start npm run dev",
   ]) {
-    assert.equal(shouldUseRooForCommand(command), false, command);
+    assert.equal(shouldUseWhiskdForCommand(command), false, command);
   }
 });
 

@@ -135,7 +135,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - The Supabase read-only boundary is pragmatic: lexical DML/DDL blocking is acceptable for the Trusted Machine, even though PostgreSQL side-effect functions cannot be perfectly detected.
 - A **Strict Roo Gate** blocks likely long-running bash commands; false positives are acceptable because roo is safer for inspectable processes.
 - **Review Learnings** stay append-only and are injected only into explicit review/learning workflows.
-- A **Tripwire Ledger** should stay opt-in, branch-scoped, low-noise, and deterministic-first; model review is exception-only after risk budget crossing.
+- A **Tripwire Ledger** should stay opt-in, branch-scoped, low-noise, deterministic-first, and visible through pi-native TUI surfaces; model review is exception-only after risk budget crossing.
 - The **Watchtower Monitor** remains user-enabled rather than always-on.
 - **Fun Chrome** stays isolated from core workflow tools and should not drive package architecture.
 - **Workflow State** is session/branch scoped, **Ambient Mode State** is session scoped, **External Truth** is rediscovered, and **Review Learnings** are global memory.

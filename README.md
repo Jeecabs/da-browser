@@ -142,6 +142,7 @@ Opt-in Tripwire Ledger supervisor for sanity-checking agent work with low noise.
 | `/supervisor off` | Disable supervisor and clear the ledger |
 | `/supervisor status` | Show budget, risk, auto-review, intervention, and latest verdict |
 | `/supervisor why` | Show current ledger flags |
+| `/supervisor open` | Open the right-side Supervisor dock overlay |
 | `/supervisor review` | Force a model review now |
 | `/supervisor reset` | Clear current ledger |
 | `/supervisor budget <n>` | Set the risk budget (default `5`) |
@@ -149,7 +150,9 @@ Opt-in Tripwire Ledger supervisor for sanity-checking agent work with low noise.
 | `/supervisor intervene on|off` | Enable/disable follow-up messages for confirmed blockers |
 | `/ok <rule|all>` | Acknowledge a hard-blocked rule for the current prompt |
 
-Tripwires currently cover dangerous bash (`rm -rf`, `sudo`, force push, destructive SQL, install-script pipes), likely secret writes, `.env` edits, scope drift from explicit path requests, lockfile/migration changes, test deletion, and failed verification commands.
+Tripwires currently cover dangerous bash (`rm -rf`, `sudo`, force push, destructive SQL, install-script pipes), likely secret writes, `.env` edits, scope drift from explicit path requests, lockfile/migration changes, and test deletion. Failed verification commands are kept as recent-tool evidence for model review without adding risk.
+
+Presentation uses pi-native TUI surfaces: a width-aware risk ribbon above the editor, `/supervisor open` as a right-docked overlay with keyboard controls (`r` review, `a` acknowledge, `A` acknowledge all, `+/-` budget, `f` fix prompt, `i` intervention, `c` clear), a custom renderer for `supervisor-review` messages, a custom working indicator during review, `/ok` rule completions, and `/tree` labels for blocker branches.
 
 ### roo
 

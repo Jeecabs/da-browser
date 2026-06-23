@@ -68,6 +68,10 @@ _Avoid_: Best-effort process guidance, permissive bash for dev servers
 A small append-only rule captured from PR feedback so future review or fix sessions avoid repeating non-obvious mistakes.
 _Avoid_: Knowledge base article, repo documentation
 
+**Tripwire Ledger**:
+An opt-in supervisor state machine that accumulates deterministic risk flags from tool calls, hard-blocks only critical irreversible actions, and escalates to a model reviewer only when a risk budget is crossed.
+_Avoid_: Always-on reviewer, scheduled nag agent
+
 **Watchtower Monitor**:
 An opt-in git monitor that fetches and displays incoming target-branch changes only after the user enables it for the session.
 _Avoid_: Always-on incoming-change monitor, background git fetcher
@@ -131,6 +135,7 @@ _Avoid_: Secret management platform, transcript sanitizer
 - The Supabase read-only boundary is pragmatic: lexical DML/DDL blocking is acceptable for the Trusted Machine, even though PostgreSQL side-effect functions cannot be perfectly detected.
 - A **Strict Roo Gate** blocks likely long-running bash commands; false positives are acceptable because roo is safer for inspectable processes.
 - **Review Learnings** stay append-only and are injected only into explicit review/learning workflows.
+- A **Tripwire Ledger** should stay opt-in, branch-scoped, low-noise, and deterministic-first; model review is exception-only after risk budget crossing.
 - The **Watchtower Monitor** remains user-enabled rather than always-on.
 - **Fun Chrome** stays isolated from core workflow tools and should not drive package architecture.
 - **Workflow State** is session/branch scoped, **Ambient Mode State** is session scoped, **External Truth** is rediscovered, and **Review Learnings** are global memory.

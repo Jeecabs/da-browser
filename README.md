@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, roo process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supervisor tripwires, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.78.1+`
 
@@ -129,6 +129,27 @@ Wraps the [Fallow](https://docs.fallow.tools) CLI into pi tools for codebase-lev
 | `/fallow config` | Show resolved config path |
 
 **Runtime prerequisite:** `npx` can fetch `fallow`, or set `FALLOW_BIN=/path/to/fallow` to use a local binary.
+
+### Supervisor
+
+Opt-in Tripwire Ledger supervisor for sanity-checking agent work with low noise. It runs deterministic tripwires on tool calls, accumulates a branch-scoped risk ledger, hard-blocks only critical irreversible actions, and calls a low-thinking isolated pi reviewer only when the risk budget is crossed.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/supervisor on` | Enable supervisor for the session/branch |
+| `/supervisor off` | Disable supervisor and clear the ledger |
+| `/supervisor status` | Show budget, risk, auto-review, intervention, and latest verdict |
+| `/supervisor why` | Show current ledger flags |
+| `/supervisor review` | Force a model review now |
+| `/supervisor reset` | Clear current ledger |
+| `/supervisor budget <n>` | Set the risk budget (default `5`) |
+| `/supervisor auto on|off` | Enable/disable model review when budget is crossed |
+| `/supervisor intervene on|off` | Enable/disable follow-up messages for confirmed blockers |
+| `/ok <rule|all>` | Acknowledge a hard-blocked rule for the current prompt |
+
+Tripwires currently cover dangerous bash (`rm -rf`, `sudo`, force push, destructive SQL, install-script pipes), likely secret writes, `.env` edits, scope drift from explicit path requests, lockfile/migration changes, test deletion, and failed verification commands.
 
 ### roo
 

@@ -1,5 +1,5 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type TSchema } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 
 import {
@@ -52,6 +52,7 @@ import {
   type WaitMode,
 } from "./state.js";
 import { prepareCompatArguments } from "./extension-utils.js";
+import { renderCompactToolResult } from "./compact-tool-renderer.js";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
 const SCROLL_DIRECTION_SCHEMA = StringEnum(["up", "down", "left", "right"] as const);
@@ -155,6 +156,12 @@ export default function (pi: ExtensionAPI) {
     throw error instanceof Error ? error : new Error(message);
   };
 
+  const registerBrowserTool = <TParams extends TSchema, TDetails = unknown, TState = unknown>(
+    tool: ToolDefinition<TParams, TDetails, TState>,
+  ): void => {
+    pi.registerTool({ renderResult: renderCompactToolResult, ...tool });
+  };
+
   const loadStateFromSession = (ctx: ExtensionContext): void => {
     let restored: unknown;
 
@@ -240,7 +247,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_status",
     label: "Browser Status",
     description: "Probe the live debugging port and show verified connection state, page-target count, browser version, and artifact locations",
@@ -260,7 +267,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_connect",
     label: "Browser Connect",
     description: "Connect agent-browser to Arc or Chromium auth context using a smart-default remote debugging port",
@@ -290,7 +297,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_open",
     label: "Browser Open",
     description: "Open a URL in agent-browser and optionally wait for the page to settle",
@@ -324,7 +331,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_snapshot",
     label: "Browser Snapshot",
     description: "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs.",
@@ -363,7 +370,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_click",
     label: "Browser Click",
     description: "Click an interactive element by its @ref and optionally resnapshot afterward",
@@ -403,7 +410,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_find",
     label: "Browser Find",
     description:
@@ -454,7 +461,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_fill",
     label: "Browser Fill",
     description: "Fill a browser input element by @ref",
@@ -492,7 +499,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_select",
     label: "Browser Select",
     description: "Select a value on a browser control by @ref",
@@ -530,7 +537,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_press",
     label: "Browser Press",
     description: "Press a browser key such as Enter, Tab, Escape, or Control+a",
@@ -556,7 +563,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_scroll",
     label: "Browser Scroll",
     description: "Scroll the current page (or a scrollable container) up, down, left, or right",
@@ -595,7 +602,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_wait",
     label: "Browser Wait",
     description:
@@ -637,7 +644,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_nav",
     label: "Browser Navigation",
     description:
@@ -667,7 +674,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_get",
     label: "Browser Get",
     description:
@@ -704,7 +711,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_debug",
     label: "Browser Debug",
     description:
@@ -752,7 +759,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_command",
     label: "Browser Command",
     description: "Run a raw agent-browser command using structured args. The active CDP port is prepended automatically; do not include --cdp.",
@@ -781,7 +788,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_eval",
     label: "Browser Eval",
     description: "Run JavaScript in the current page for structured extraction or page diagnostics",
@@ -801,7 +808,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_tab",
     label: "Browser Tab",
     description:
@@ -841,7 +848,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_is",
     label: "Browser Is",
     description: "Boolean assertions for visible/enabled/checked — returns structured details.result instead of text to regex-match",
@@ -870,7 +877,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_set",
     label: "Browser Set",
     description:
@@ -926,7 +933,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_record",
     label: "Browser Record",
     description: "Start or stop video recording (.webm) of the current browser context for QA artifact capture",
@@ -950,7 +957,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_trace",
     label: "Browser Trace",
     description: "Start or stop a Playwright-style trace (.zip) for the current browser context",
@@ -974,7 +981,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_checkpoint",
     label: "Browser Checkpoint",
     description:
@@ -1003,7 +1010,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_react",
     label: "Browser React",
     description:
@@ -1039,7 +1046,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
+  registerBrowserTool({
     name: "browser_vitals",
     label: "Browser Vitals",
     description:

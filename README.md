@@ -79,7 +79,7 @@ A custom pi theme with a stronger Vice City / Miami neon palette and a restraine
 
 ### PostHog
 
-Wraps `posthog-cli` for exception reporting and URL-based triage.
+Wraps `posthog-cli` for exception reporting and URL-based triage. Workflow: use `posthog_exception_urls` first when asking where errors happen, `posthog_exceptions` for ranked URL/tag-filtered groups, and `posthog_exception_tag_report` for derived stable `url:*` labels.
 
 **Tools (callable by the LLM):**
 
@@ -158,7 +158,9 @@ Presentation uses pi-native TUI surfaces: a width-aware risk ribbon above the ed
 
 Wraps the [whiskd](https://github.com/Jeecabs/whiskd) process manager into pi tools so the agent can start background processes and read their logs.
 
-The extension also teaches pi to prefer whiskd for long-running or inspectable commands. Things like `pnpm run dev`, `npm run dev`, `vite`, `next dev`, tunnels, and watchers should be started with `whiskd_start`, inspected with `whiskd_logs`, and stopped with `whiskd_stop`. Matching long-lived local-process commands are blocked from the built-in `bash` tool so the agent retries with whiskd instead. Docker/Podman-style workflows are intentionally left alone so the agent can use their native lifecycle and log inspection commands.
+The extension also teaches pi to prefer whiskd for long-running or inspectable commands. Things like `pnpm run dev`, `npm run dev`, `vite`, `next dev`, local APIs, tunnels, watchers, background scripts, and jobs whose logs may matter later should be started with `whiskd_start`, inspected with `whiskd_logs`, and stopped with `whiskd_stop`. Important services should get stable names. Matching long-lived local-process commands are blocked from the built-in `bash` tool so the agent retries with whiskd instead. Docker/Podman-style workflows are intentionally left alone so the agent can use their native lifecycle and log inspection commands.
+
+`whiskd_status` first scans wrapper-visible process state. If that says none but raw `whiskd status --json` finds processes, it reports the discrepancy and returns the raw CLI JSON so agents avoid starting duplicate dev servers.
 
 **Tools (callable by the LLM):**
 

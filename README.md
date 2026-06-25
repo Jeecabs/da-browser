@@ -1,6 +1,6 @@
 # lachlan-aa-pi-extensions
 
-Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, whiskd process management, tmux cx pairing, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supervisor tripwires, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
+Personal trusted-machine [pi](https://github.com/badlogic/pi-mono) extensions and themes for Lachlan/AA workflows. This repo bundles browser ops, video artifact analysis, whiskd process management, HTML artifact guidance, Excalidraw diagram generation, Fallow codebase intelligence, Supervisor tripwires, Supabase, Linear, PostHog helpers, GitHub review utilities, Watchtower incoming-change monitoring, Vice City chrome, and the neon **synthwave-84** theme.
 
 **Recommended pi version:** `0.78.1+`
 
@@ -176,6 +176,8 @@ The status bar shows a yellow dot with the process name when one is running, or 
 **Runtime prerequisite:** [`whiskd`](https://github.com/Jeecabs/whiskd) installed and on `PATH`.
 
 ### tmux cx pair
+
+> Disabled for now: the extension remains in `src/tmux-cx-pair/`, but is not loaded from `package.json`. Current workflow uses the `gang` command instead. Decision: Claude-model `cx` sessions are not worth it right now; keep everything pi-native.
 
 Human-driven two-agent cockpit for local `cx` sessions. The agent can launch a left/right pair in tmux, capture raw pane output, relay targeted messages, inspect health, and stop both sessions.
 

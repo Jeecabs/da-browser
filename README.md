@@ -79,9 +79,9 @@ A custom pi theme with a stronger Vice City / Miami neon palette and a restraine
 
 ### PostHog
 
-Wraps `posthog-cli` for exception reporting and URL-based triage. Workflow: use `posthog_exception_urls` first when asking where errors happen, `posthog_exceptions` for ranked URL/tag-filtered groups, and `posthog_exception_tag_report` for derived stable `url:*` labels.
+Wraps `posthog-cli` for exception reporting and URL-based triage. PostHog tools and context guidance are disabled by default; enable them per session/branch with `/posthog enable`, or start pi with `--posthog` / `PI_POSTHOG_ENABLED=1`. Workflow: use `posthog_exception_urls` first when asking where errors happen, `posthog_exceptions` for ranked URL/tag-filtered groups, and `posthog_exception_tag_report` for derived stable `url:*` labels.
 
-**Tools (callable by the LLM):**
+**Tools (callable by the LLM once enabled):**
 
 | Tool | Description |
 |------|-------------|
@@ -90,7 +90,7 @@ Wraps `posthog-cli` for exception reporting and URL-based triage. Workflow: use 
 | `posthog_exception_urls` | Rank URLs by exception volume and suggest stable `url:*` tags |
 | `posthog_exception_tag_report` | Return exception groups with derived URL/route tags for triage reports |
 
-**Command:** `/posthog exceptions [url] | urls | query <hogql>`
+**Command:** `/posthog enable | disable | status | exceptions [url] | urls | query <hogql>`
 
 Runtime prerequisite: `posthog-cli` on `PATH`, or set `POSTHOG_CLI_BIN`. Query reporting requires a PostHog token with `query:read`; run `posthog-cli login` or set `POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID`.
 

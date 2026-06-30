@@ -17,6 +17,7 @@ import {
   openBrowserPage,
   pressBrowserKey,
   reactBrowser,
+  readBrowserContent,
   recordBrowser,
   runBrowserCommand,
   scrollBrowserPage,
@@ -35,6 +36,7 @@ import {
   type FindAction,
   type IsCheck,
   type ReactCommand,
+  type ReadArgsOptions,
   type SetSetting,
   type TabAction,
   type WaitArgsOptions,
@@ -105,12 +107,14 @@ const BROWSER_REACT_COMMAND_SCHEMA = StringEnum([
   "renders-stop",
   "suspense",
 ] as const);
+const BROWSER_READ_LLMS_SCHEMA = StringEnum(["index", "full"] as const);
 const CUSTOM_STATE_TYPE = "browser-ops-state";
 
 const BROWSER_GUIDELINES = [
   "Browser element refs (@eN) come from the most recent snapshot and become stale after any DOM mutation. Re-snapshot or use browser_find after navigation, click, or fill.",
   "Prefer browser_find over snapshot+click when the target is described by role, label, text, placeholder, alt, title, or testid — it avoids a snapshot round-trip. browser_find ALWAYS performs its action; to inspect without acting, use browser_snapshot or browser_get.",
   "For heavy SPAs, scope browser_snapshot with selector (CSS subtree) or depth to keep context small. interactiveOnly already filters non-interactive nodes by default; includeUrls adds link hrefs without extra browser_get calls.",
+  "Use browser_read for docs/articles/text pages: pass a URL for markdown/llms.txt-aware fetching without browser_connect, or omit url to read the rendered active tab with auth/client state.",
   "After browser_open, browser_nav, or any submission, the page is mid-load. Rely on waitMode='networkidle' (default) or follow up with browser_wait — prefer its text/urlPattern/load/fn modes over raw millisecond waits.",
   "Tabs use stable string ids (t1, t2, …) plus optional labels — never positional integers. Get ids from browser_tab list; label tabs at creation for multi-tab flows.",
   "Use browser_checkpoint after important mutations to save a screenshot + interactive snapshot pair for verification and recovery; annotate=true adds numbered labels keyed to @eN refs for vision use.",
@@ -362,6 +366,54 @@ export default function (pi: ExtensionAPI) {
           params.label ?? "snapshot",
           { urls: params.includeUrls, compact: params.compact, depth: params.depth, selector: params.selector },
         );
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  registerBrowserTool({
+    name: "browser_read",
+    label: "Browser Read",
+    description:
+      "Fetch agent-readable text from a URL with markdown/llms.txt-aware fallbacks, or read the rendered active browser tab when url is omitted.",
+    promptSnippet: "Read docs, articles, or active-page text through agent-browser's read command",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      url: Type.Optional(Type.String({ description: "URL to fetch. Omit to read the rendered active browser tab." })),
+      filter: Type.Optional(Type.String({ description: "Narrow matching heading sections, llms links/sections, or outline headings" })),
+      outline: Type.Optional(Type.Boolean({ description: "Return a compact heading outline for one page" })),
+      llms: Type.Optional(BROWSER_READ_LLMS_SCHEMA),
+      requireMd: Type.Optional(Type.Boolean({ description: "Fail unless the server returns markdown" })),
+      raw: Type.Optional(Type.Boolean({ description: "Return the raw response body without HTML extraction" })),
+      json: Type.Optional(Type.Boolean({ description: "Return structured metadata instead of only content" })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Request timeout in milliseconds" })),
+      maxOutput: Type.Optional(Type.Number({ description: "Maximum output characters before agent-browser truncates" })),
+      allowedDomains: Type.Optional(
+        Type.Array(Type.String(), { description: "Allowed domain patterns, e.g. example.com or *.example.com" }),
+      ),
+      contentBoundaries: Type.Optional(Type.Boolean({ description: "Wrap page output in boundary markers" })),
+      label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),
+    }),
+    prepareArguments(args) {
+      const prepared = prepareCompatArguments(args, {
+        aliases: { href: "url", timeout: "timeoutMs", requireMarkdown: "requireMd", domains: "allowedDomains" },
+        booleanFields: ["outline", "requireMd", "raw", "json", "contentBoundaries"],
+        numberFields: ["timeoutMs", "maxOutput"],
+      }) as Record<string, unknown>;
+      if (typeof prepared.allowedDomains === "string") {
+        return {
+          ...prepared,
+          allowedDomains: prepared.allowedDomains.split(",").map((entry) => entry.trim()).filter(Boolean),
+        };
+      }
+      return prepared;
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await readBrowserContent(pi, state, ctx, params as ReadArgsOptions & { label?: string });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

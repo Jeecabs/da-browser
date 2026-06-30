@@ -305,7 +305,7 @@ Opt-in git monitor for incoming target-branch changes and dirty-file conflict ri
 
 ### browser ops
 
-Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively. Common actions are typed tools; rarer `agent-browser` features are available through `browser_command` with structured args.
+Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can drive a browser natively. Common actions are typed tools; rarer `agent-browser` features are available through `browser_command` with structured args. The wrapper targets `agent-browser` 0.31.x and exposes the 0.30+ `read` workflow for markdown/llms.txt-aware text extraction.
 
 **Commands:**
 
@@ -323,13 +323,14 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 | `browser_connect` | Connect to browser |
 | `browser_open` | Navigate to a URL |
 | `browser_snapshot` | Capture page accessibility snapshot |
+| `browser_read` | Fetch markdown/llms.txt-aware text from a URL, or read rendered active-tab text |
 | `browser_click` | Click an element |
 | `browser_fill` | Fill a form field |
 | `browser_select` | Select a dropdown option |
 | `browser_press` | Press browser keys like Enter, Tab, Escape, Control+a |
 | `browser_scroll` | Scroll the current page |
 | `browser_wait` | Wait for a selector/ref or milliseconds |
-| `browser_nav` | Go back, forward, or reload |
+| `browser_nav` | Go back, forward, reload, or SPA `pushstate` |
 | `browser_get` | Read text/html/value/attr/title/url/count/box/styles |
 | `browser_debug` | Read console logs, page errors, or network requests |
 | `browser_command` | Run raw `agent-browser` args with active CDP port prepended |
@@ -337,9 +338,11 @@ Wraps the `agent-browser` CLI into typed pi tools and commands so the agent can 
 | `browser_checkpoint` | Save current page state |
 | `browser_tab` | List, open, close, or switch browser tabs |
 | `browser_is` | Boolean assertions for `visible`/`enabled`/`checked` |
-| `browser_emulate` | Emulate viewport, device, geolocation, offline, or media settings |
+| `browser_set` | Configure viewport, device, geolocation, offline, media, headers, or credentials |
 | `browser_record` | Start or stop video recording (.webm) of the current context |
-| `browser_trace` | Start or stop a Playwright trace (.zip) for the current context |
+| `browser_trace` | Start or stop a Playwright trace (.zip) of the current context |
+| `browser_react` | Inspect React component tree, fibers, re-renders, or Suspense boundaries |
+| `browser_vitals` | Measure Core Web Vitals and React hydration timing |
 
 ### How it works
 
@@ -371,7 +374,7 @@ Recovery is partly automatic: if a command fails because the controlled tab vani
 
 ### Runtime prerequisites
 
-- [`agent-browser`](https://github.com/nicholasoxford/agent-browser) installed and on `PATH`
+- [`agent-browser`](https://github.com/vercel-labs/agent-browser) installed and on `PATH`
 - Arc launched with remote debugging:
 
 ```bash

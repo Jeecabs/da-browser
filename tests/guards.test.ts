@@ -5,6 +5,7 @@ import {
   buildFindArgs,
   buildIsArgs,
   buildReactArgs,
+  buildReadArgs,
   buildRecordArgs,
   buildSetArgs,
   buildSnapshotArgs,
@@ -194,6 +195,45 @@ test("buildFindArgs rejects unsafe or incomplete calls", () => {
     () => buildFindArgs({ locator: "text", value: "Save", action: "click", nthIndex: 1 }),
     /only applies to the 'nth' locator/,
   );
+});
+
+test("buildReadArgs composes markdown/llms-aware read flags", () => {
+  assert.deepEqual(
+    buildReadArgs({
+      url: "https://docs.example.com/guide",
+      filter: "auth",
+      outline: true,
+      llms: "index",
+      requireMd: true,
+      raw: true,
+      timeoutMs: 30_000,
+      maxOutput: 20_000,
+      allowedDomains: ["docs.example.com", "*.example.com"],
+      contentBoundaries: true,
+      json: true,
+    }),
+    [
+      "read",
+      "https://docs.example.com/guide",
+      "--filter",
+      "auth",
+      "--outline",
+      "--llms",
+      "index",
+      "--require-md",
+      "--raw",
+      "--timeout",
+      "30000",
+      "--max-output",
+      "20000",
+      "--allowed-domains",
+      "docs.example.com,*.example.com",
+      "--content-boundaries",
+      "--json",
+    ],
+  );
+
+  assert.deepEqual(buildReadArgs({}), ["read"]);
 });
 
 test("buildSnapshotArgs composes -i, -u, -c, -d, and -s flags", () => {

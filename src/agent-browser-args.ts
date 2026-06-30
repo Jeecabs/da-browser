@@ -17,6 +17,45 @@ export function buildSnapshotArgs(opts: SnapshotArgsOptions): string[] {
   return args;
 }
 
+export interface ReadArgsOptions {
+  /** Optional URL. Omit to read rendered text from the active browser tab. */
+  url?: string;
+  /** Narrow page sections, llms links/sections, or outline headings. */
+  filter?: string;
+  /** Return a compact heading outline for one page. */
+  outline?: boolean;
+  /** Read nearest-ancestor llms.txt (`index`) or llms-full.txt (`full`). */
+  llms?: "index" | "full";
+  /** Fail unless the server returns markdown. */
+  requireMd?: boolean;
+  /** Return the raw response body without HTML extraction. */
+  raw?: boolean;
+  /** Return structured metadata from agent-browser. */
+  json?: boolean;
+  timeoutMs?: number;
+  maxOutput?: number;
+  allowedDomains?: string[];
+  contentBoundaries?: boolean;
+}
+
+export function buildReadArgs(params: ReadArgsOptions): string[] {
+  const args = ["read"];
+  if (params.url) args.push(params.url);
+  if (params.filter) args.push("--filter", params.filter);
+  if (params.outline) args.push("--outline");
+  if (params.llms) args.push("--llms", params.llms);
+  if (params.requireMd) args.push("--require-md");
+  if (params.raw) args.push("--raw");
+  if (params.timeoutMs !== undefined) args.push("--timeout", String(params.timeoutMs));
+  if (params.maxOutput !== undefined) args.push("--max-output", String(params.maxOutput));
+  if (params.allowedDomains && params.allowedDomains.length > 0) {
+    args.push("--allowed-domains", params.allowedDomains.join(","));
+  }
+  if (params.contentBoundaries) args.push("--content-boundaries");
+  if (params.json) args.push("--json");
+  return args;
+}
+
 export const FIND_ACTIONS = ["click", "fill", "type", "hover", "focus", "check", "uncheck"] as const;
 export type FindAction = (typeof FIND_ACTIONS)[number];
 

@@ -7,6 +7,7 @@ import {
   buildFindArgs,
   buildIsArgs,
   buildReactArgs,
+  buildReadArgs,
   buildRecordArgs,
   buildSetArgs,
   buildSnapshotArgs,
@@ -18,6 +19,7 @@ import {
   type FindArgsOptions,
   type IsArgsOptions,
   type ReactArgsOptions,
+  type ReadArgsOptions,
   type SetArgsOptions,
   type TabArgsOptions,
   type WaitArgsOptions,
@@ -60,6 +62,7 @@ export {
   buildFindArgs,
   buildIsArgs,
   buildReactArgs,
+  buildReadArgs,
   buildRecordArgs,
   buildSetArgs,
   buildSnapshotArgs,
@@ -81,6 +84,7 @@ export type {
   IsCheck,
   ReactArgsOptions,
   ReactCommand,
+  ReadArgsOptions,
   SetArgsOptions,
   SetSetting,
   SnapshotArgsOptions,
@@ -229,6 +233,60 @@ export async function snapshotBrowserPage(
       depth: options.depth,
       selector: options.selector,
       snapshotFile,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+export async function readBrowserContent(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: ReadArgsOptions & { label?: string },
+): Promise<BrowserActionResult> {
+  await ensureArtifactDir(state);
+  await assertAgentBrowserInstalled(pi, ctx);
+
+  // Always ask the CLI for JSON internally so we can preserve source/contentType
+  // diagnostics while returning plain content by default.
+  const cliArgs = buildReadArgs({ ...params, json: true });
+  const displayArgs = buildReadArgs(params);
+  const needsBrowser = !params.url;
+  const timeout = params.timeoutMs !== undefined ? params.timeoutMs + 15_000 : 60_000;
+  const parsed = await runAgentBrowserJSON(pi, cliArgs, ctx, timeout, needsBrowser ? { port: state.port } : {});
+  const content = params.json ? JSON.stringify(parsed ?? null, null, 2) : readPayloadContent(parsed);
+  const label = params.label ?? (params.url ? `read-${domainFromUrl(params.url) ?? "url"}` : "read-active-tab");
+  const formatted = await formatToolText(content || "(no content)", {
+    label: `browser-${label}`,
+    mode: "head",
+  });
+
+  state.lastAction = displayArgs.join(" ");
+  state.lastError = undefined;
+
+  if (needsBrowser) {
+    state.connected = true;
+    await refreshCurrentUrl(pi, state, ctx);
+  }
+
+  return {
+    summary: params.url ? `Read ${params.url}.` : "Read active browser page.",
+    contentText: formatted.text,
+    artifacts: formatted.fullOutputFile ? [formatted.fullOutputFile] : undefined,
+    diagnostics: {
+      url: params.url,
+      filter: params.filter,
+      outline: params.outline,
+      llms: params.llms,
+      requireMd: params.requireMd,
+      raw: params.raw,
+      json: params.json,
+      timeoutMs: params.timeoutMs,
+      maxOutput: params.maxOutput,
+      allowedDomains: params.allowedDomains,
+      contentBoundaries: params.contentBoundaries,
+      fullOutputFile: formatted.fullOutputFile,
+      ...readPayloadDiagnostics(parsed),
       currentUrl: state.currentUrl,
     },
   };
@@ -1289,6 +1347,24 @@ function combineStreams(result: CommandResult): string {
 
 function joinAgentBrowserOutput(result: CommandResult): string {
   return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+}
+
+function readPayloadContent(payload: unknown): string {
+  if (isPlainObject(payload) && typeof payload.content === "string") return payload.content;
+  if (typeof payload === "string") return payload;
+  if (payload === undefined || payload === null) return "";
+  return JSON.stringify(payload, null, 2);
+}
+
+function readPayloadDiagnostics(payload: unknown): Record<string, unknown> {
+  if (!isPlainObject(payload)) return {};
+  return {
+    source: payload.source,
+    contentType: payload.contentType,
+    finalUrl: payload.finalUrl,
+    status: payload.status,
+    truncated: payload.truncated,
+  };
 }
 
 async function runAgentBrowserJSON(

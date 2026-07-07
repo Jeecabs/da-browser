@@ -6,11 +6,28 @@ This repo owns the browser tools that used to live in `Jeecabs/pi-extensions`.
 
 ## Install
 
+### HTTPS install
+
+Use the HTTPS URL for the private GitHub repo:
+
+```bash
+pi install https://github.com/Jeecabs/pi-browser-ops
+```
+
+If GitHub auth is not wired into Git yet:
+
+```bash
+gh auth login
+gh auth setup-git
+```
+
+### Git shorthand install
+
 ```bash
 pi install git:github.com/Jeecabs/pi-browser-ops
 ```
 
-For local development:
+### Local development
 
 ```bash
 git clone https://github.com/Jeecabs/pi-browser-ops.git ~/.pi/agent/extensions/pi-browser-ops

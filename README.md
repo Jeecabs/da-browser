@@ -1,6 +1,6 @@
-# pi-browser-ops
+# da browser
 
-Private [pi](https://github.com/badlogic/pi-mono) package for browser automation tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
+Private [pi](https://github.com/badlogic/pi-mono) package for browser-control tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
 
 
 ## Install
@@ -10,7 +10,7 @@ Private [pi](https://github.com/badlogic/pi-mono) package for browser automation
 Use the HTTPS URL for the private GitHub repo:
 
 ```bash
-pi install https://github.com/Jeecabs/pi-browser-ops
+pi install https://github.com/Jeecabs/da-browser
 ```
 
 If GitHub auth is not wired into Git yet:
@@ -23,14 +23,14 @@ gh auth setup-git
 ### Git shorthand install
 
 ```bash
-pi install git:github.com/Jeecabs/pi-browser-ops
+pi install git:github.com/Jeecabs/da-browser
 ```
 
 ### Local development
 
 ```bash
-git clone https://github.com/Jeecabs/pi-browser-ops.git ~/.pi/agent/extensions/pi-browser-ops
-cd ~/.pi/agent/extensions/pi-browser-ops
+git clone https://github.com/Jeecabs/da-browser.git ~/.pi/agent/extensions/da-browser
+cd ~/.pi/agent/extensions/da-browser
 pnpm install
 ```
 
@@ -109,4 +109,4 @@ pnpm test
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
 - `/browser status` and `browser_status` actively probe the port; trust them over cached state.
 - If the controlled tab disappears, commands recreate a page target and retry once.
-- The artifact directory is `/tmp/pi-browser-ops/<cwd-slug>`.
+- The artifact directory is `/tmp/da-browser/<cwd-slug>`.

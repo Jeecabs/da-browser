@@ -45,7 +45,7 @@ export function createBrowserState(
   dashboardPort = resolveBrowserDashboardPort(),
 ): BrowserState {
   const slug = `${sanitizeSegment(basename(cwd) || "project")}-${hashString(cwd)}`;
-  const artifactDir = join(os.tmpdir(), "pi-browser-ops", slug);
+  const artifactDir = join(os.tmpdir(), "da-browser", slug);
 
   return {
     port,

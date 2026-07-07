@@ -1,13 +1,13 @@
 {
-  "name": "pi-browser-ops",
+  "name": "da-browser",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
-  "description": "Private pi package for browser automation tools powered by agent-browser.",
+  "description": "Private pi package for browser-control tools powered by agent-browser.",
   "keywords": [
     "pi-package",
-    "browser-automation",
+    "browser-control",
     "agent-browser"
   ],
   "pi": {

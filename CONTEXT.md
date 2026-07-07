@@ -1,11 +1,11 @@
-# Pi Browser Ops
+# da browser
 
-Private pi package for Lachlan's browser automation workflow. It wraps `agent-browser` as typed pi tools, commands, status UI, and session-scoped state.
+Private pi package for Lachlan's browser-control workflow. It wraps `agent-browser` as typed pi tools, commands, status UI, and session-scoped state.
 
 ## Language
 
-**Browser Ops Package**:
-A focused pi package that owns browser automation, separate from the general `pi-extensions` bundle.
+**da browser package**:
+A focused pi package that owns browser control, separate from the general `pi-extensions` bundle.
 _Avoid_: Generic extension bundle, public plugin collection
 
 **Trusted Browser Automation**:
@@ -25,12 +25,12 @@ A browser-down, target-gone, or busy-page state that should produce a clear reco
 _Avoid_: Raw protocol failure, silent retry loop
 
 **Browser Artifact**:
-Screenshot, snapshot, eval output, video, or trace file saved under the deterministic `/tmp/pi-browser-ops/<cwd-slug>` directory.
+Screenshot, snapshot, eval output, video, or trace file saved under the deterministic `/tmp/da-browser/<cwd-slug>` directory.
 _Avoid_: Global permanent artifact store
 
 ## Relationships
 
-- A **Browser Ops Package** is installed separately from `pi-extensions`.
+- **da browser** is installed separately from `pi-extensions`.
 - **Trusted Browser Automation** depends on the local Arc/Chromium auth context and CDP port.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.
 - **Controlled Tab** state is session/branch scoped, not global truth.

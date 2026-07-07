@@ -2,7 +2,6 @@
 
 Private [pi](https://github.com/badlogic/pi-mono) package for browser automation tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
 
-This repo owns the browser tools that used to live in `Jeecabs/pi-extensions`.
 
 ## Install
 

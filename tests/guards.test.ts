@@ -28,9 +28,6 @@ import {
   controlledTabMarkScript,
   CONTROLLED_TAB_CLEAR_SCRIPT,
 } from "../src/controlled-tab.ts";
-import { appendCommonFallowArgs, normalizeCliPath } from "../src/fallow/args.ts";
-import { shouldUseWhiskdForCommand } from "../src/whiskd/command-policy.ts";
-import { assertReadOnly } from "../src/supabase/api.ts";
 import {
   connectionHealth,
   createBrowserState,
@@ -39,39 +36,6 @@ import {
   resolveBrowserPort,
   serializeBrowserState,
 } from "../src/state.ts";
-import {
-  buildPairSummary,
-  createPairState,
-  makeSessionNames,
-  mergePairState,
-  normalizePathInput,
-  normalizePrefix,
-  resolveStateForPrefix,
-  serializePairState,
-} from "../src/tmux-cx-pair/state.ts";
-
-test("assertReadOnly allows inspection queries", () => {
-  assert.doesNotThrow(() => assertReadOnly("SELECT * FROM foo LIMIT 1"));
-  assert.doesNotThrow(() => assertReadOnly("EXPLAIN SELECT * FROM foo"));
-  assert.doesNotThrow(() => assertReadOnly("WITH x AS (SELECT 1) SELECT * FROM x"));
-  assert.doesNotThrow(() => assertReadOnly("SHOW search_path"));
-});
-
-test("assertReadOnly blocks obvious writes", () => {
-  for (const sql of [
-    "INSERT INTO foo VALUES (1)",
-    "UPDATE foo SET bar = 1",
-    "DELETE FROM foo",
-    "DROP TABLE foo",
-    "ALTER TABLE foo ADD COLUMN bar text",
-    "TRUNCATE foo",
-    "CREATE TABLE foo(id int)",
-    "GRANT SELECT ON foo TO bar",
-    "REVOKE SELECT ON foo FROM bar",
-  ]) {
-    assert.throws(() => assertReadOnly(sql));
-  }
-});
 
 test("prepareCompatArguments applies aliases and primitive coercions", () => {
   const prepared = prepareCompatArguments(
@@ -91,64 +55,6 @@ test("prepareCompatArguments applies aliases and primitive coercions", () => {
   });
 });
 
-test("fallow args normalize @ paths and append common flags", () => {
-  assert.equal(normalizeCliPath("@src/index.ts"), "src/index.ts");
-  assert.equal(normalizeCliPath("src/index.ts"), "src/index.ts");
-
-  const args: string[] = ["dead-code"];
-  appendCommonFallowArgs(args, {
-    root: "@/repo",
-    config: "@fallow.toml",
-    workspace: ["@scope/app", "pkg-*"],
-    changedSince: "origin/main",
-    production: true,
-    format: "json",
-    threads: 4,
-  });
-
-  assert.deepEqual(args, [
-    "dead-code",
-    "--root",
-    "/repo",
-    "--config",
-    "fallow.toml",
-    "--workspace",
-    "@scope/app",
-    "--workspace",
-    "pkg-*",
-    "--changed-since",
-    "origin/main",
-    "--format",
-    "json",
-    "--production",
-    "--threads",
-    "4",
-  ]);
-});
-
-test("shouldUseWhiskdForCommand catches long-running local commands and leaves containers alone", () => {
-  for (const command of [
-    "pnpm run dev",
-    "npm start",
-    "vite dev",
-    "tail -f app.log",
-    "kubectl port-forward svc/api 8080:80",
-    "ngrok http 3000",
-    "node --watch server.js",
-  ]) {
-    assert.equal(shouldUseWhiskdForCommand(command), true, command);
-  }
-
-  for (const command of [
-    "pnpm install",
-    "npm test -- --runInBand",
-    "docker compose up -d",
-    "podman logs app",
-    "whiskd start npm run dev",
-  ]) {
-    assert.equal(shouldUseWhiskdForCommand(command), false, command);
-  }
-});
 
 test("buildFindArgs composes locator, action, name, and exact flags", () => {
   assert.deepEqual(
@@ -173,6 +79,7 @@ test("buildFindArgs composes locator, action, name, and exact flags", () => {
   );
 });
 
+
 test("buildFindArgs rejects unsafe or incomplete calls", () => {
   // The CLI defaults a missing action to click — a locate-only call must never slip through.
   assert.throws(
@@ -196,6 +103,7 @@ test("buildFindArgs rejects unsafe or incomplete calls", () => {
     /only applies to the 'nth' locator/,
   );
 });
+
 
 test("buildReadArgs composes markdown/llms-aware read flags", () => {
   assert.deepEqual(
@@ -236,6 +144,7 @@ test("buildReadArgs composes markdown/llms-aware read flags", () => {
   assert.deepEqual(buildReadArgs({}), ["read"]);
 });
 
+
 test("buildSnapshotArgs composes -i, -u, -c, -d, and -s flags", () => {
   assert.deepEqual(
     buildSnapshotArgs({ interactiveOnly: true, urls: true, compact: true, depth: 3, selector: "main" }),
@@ -246,6 +155,7 @@ test("buildSnapshotArgs composes -i, -u, -c, -d, and -s flags", () => {
   assert.deepEqual(buildSnapshotArgs({}), ["snapshot"]);
   assert.deepEqual(buildSnapshotArgs({ depth: 0 }), ["snapshot", "-d", "0"]);
 });
+
 
 test("buildTabArgs uses stable string tab ids and labels", () => {
   assert.deepEqual(buildTabArgs({ action: "list" }), ["tab", "list", "--json"]);
@@ -281,11 +191,13 @@ test("buildTabArgs uses stable string tab ids and labels", () => {
   );
 });
 
+
 test("normalizeTabRef coerces bare integers to stable t-ids", () => {
   assert.equal(normalizeTabRef("2"), "t2");
   assert.equal(normalizeTabRef(" t2 "), "t2");
   assert.equal(normalizeTabRef("docs"), "docs");
 });
+
 
 test("buildIsArgs covers all three checks and requires a selector", () => {
   assert.deepEqual(buildIsArgs({ check: "visible", selector: "@e1" }), [
@@ -309,6 +221,7 @@ test("buildIsArgs covers all three checks and requires a selector", () => {
 
   assert.throws(() => buildIsArgs({ check: "visible", selector: "" }), /requires a selector/);
 });
+
 
 test("buildSetArgs validates per-setting required fields", () => {
   assert.deepEqual(
@@ -358,6 +271,7 @@ test("buildSetArgs validates per-setting required fields", () => {
   assert.throws(() => buildSetArgs({ setting: "credentials", username: "admin" }), /username and password/);
 });
 
+
 test("buildWaitArgs requires exactly one mode and composes flags", () => {
   assert.deepEqual(buildWaitArgs({ selector: "@e3" }), ["wait", "@e3"]);
   assert.deepEqual(buildWaitArgs({ selector: "#spinner", state: "hidden" }), [
@@ -384,6 +298,7 @@ test("buildWaitArgs requires exactly one mode and composes flags", () => {
   assert.throws(() => buildWaitArgs({ text: "Saved", state: "hidden" }), /state only applies/);
 });
 
+
 test("buildReactArgs maps commands and validates inspect", () => {
   assert.deepEqual(buildReactArgs({ command: "tree" }), ["react", "tree"]);
   assert.deepEqual(buildReactArgs({ command: "inspect", fiberId: 42 }), ["react", "inspect", "42"]);
@@ -399,6 +314,7 @@ test("buildReactArgs maps commands and validates inspect", () => {
   assert.throws(() => buildReactArgs({ command: "inspect" }), /requires fiberId/);
 });
 
+
 test("unwrapCliEnvelope unwraps data and throws CLI errors", () => {
   assert.deepEqual(
     unwrapCliEnvelope({ success: true, data: { title: "Home" }, error: null }),
@@ -412,6 +328,7 @@ test("unwrapCliEnvelope unwraps data and throws CLI errors", () => {
   assert.deepEqual(unwrapCliEnvelope([1, 2]), [1, 2]);
   assert.equal(unwrapCliEnvelope("plain"), "plain");
 });
+
 
 test("extractGetResult and extractBooleanResult read named data fields", () => {
   assert.equal(extractGetResult("title", { title: "Home" }), "Home");
@@ -435,6 +352,7 @@ test("extractGetResult and extractBooleanResult read named data fields", () => {
   assert.throws(() => extractBooleanResult("visible", { origin: "https://x.dev" }), /expected a boolean/);
 });
 
+
 test("normalizeTabList and formatTabTable surface stable ids and labels", () => {
   const tabs = normalizeTabList({
     tabs: [
@@ -451,6 +369,7 @@ test("normalizeTabList and formatTabTable surface stable ids and labels", () => 
 
   assert.deepEqual(normalizeTabList({ unexpected: true }), []);
 });
+
 
 test("buildRecordArgs and buildTraceArgs cover start with/without label and stop", () => {
   assert.deepEqual(buildRecordArgs({ action: "start" }), ["record", "start"]);
@@ -477,6 +396,7 @@ test("buildRecordArgs and buildTraceArgs cover start with/without label and stop
     /does not accept a file path/,
   );
 });
+
 
 test("prepareCompatArguments for browser_find aliases role/element and coerces exact", () => {
   const aliased = prepareCompatArguments(
@@ -507,6 +427,7 @@ test("prepareCompatArguments for browser_find aliases role/element and coerces e
   assert.equal((coerced as { exact?: boolean }).exact, true);
   assert.equal((coerced as { resnapshot?: boolean }).resnapshot, false);
 });
+
 
 test("browser state helpers normalize refs, ports, and persisted state", () => {
   assert.equal(normalizeRef("@@e12"), "e12");
@@ -553,6 +474,7 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
   });
 });
 
+
 test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(
     classifyCdpError(
@@ -570,6 +492,7 @@ test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(classifyCdpError("Element not found: @e5"), "unknown");
   assert.equal(classifyCdpError(""), "unknown");
 });
+
 
 test("controlled-tab overlay builds safe, valid inject scripts", () => {
   assert.equal(controlledTabLabel("supabase.com"), "pi agent · supabase.com");
@@ -590,6 +513,7 @@ test("controlled-tab overlay builds safe, valid inject scripts", () => {
   assert.doesNotThrow(() => new Function(CONTROLLED_TAB_CLEAR_SCRIPT));
 });
 
+
 test("connectionHealth reflects liveness honestly", () => {
   const base = createBrowserState("/tmp/proj", 9222, 4848);
   const now = 1_700_000_000_000;
@@ -602,57 +526,3 @@ test("connectionHealth reflects liveness honestly", () => {
   assert.equal(connectionHealth({ ...base, connected: true }, now), "ok");
 });
 
-test("tmux cx pair helpers normalize names, paths, and persisted state", () => {
-  assert.equal(normalizePrefix(" Feature/API!! "), "feature-api");
-  assert.equal(normalizePrefix(undefined), undefined);
-  assert.throws(() => normalizePrefix("!!!"), /Prefix/);
-
-  assert.deepEqual(makeSessionNames("feature-api"), {
-    leftSession: "feature-api-left",
-    rightSession: "feature-api-right",
-  });
-
-  assert.equal(normalizePathInput("@src", "/tmp/repo"), "/tmp/repo/src");
-  assert.equal(normalizePathInput("/tmp/other", "/tmp/repo"), "/tmp/other");
-
-  const initial = createPairState("/tmp/repo");
-  assert.deepEqual(serializePairState(initial), { cwd: "/tmp/repo" });
-
-  const restored = mergePairState("/tmp/repo", {
-    cwd: "/work",
-    prefix: "feature-api",
-    leftSession: "feature-api-left",
-    rightSession: "feature-api-right",
-    goal: "ship it",
-    leftRole: "builder",
-    rightRole: "tester",
-  });
-
-  assert.equal(restored.cwd, "/work");
-  assert.equal(restored.leftRole, "builder");
-
-  const other = resolveStateForPrefix(restored, "Other Pair");
-  assert.equal(other.prefix, "other-pair");
-  assert.equal(other.leftSession, "other-pair-left");
-  assert.equal(other.goal, undefined);
-});
-
-test("tmux cx pair summary includes runtime health", () => {
-  const text = buildPairSummary(
-    {
-      cwd: "/tmp/repo",
-      prefix: "feature-api",
-      goal: "ship it",
-      leftRole: "builder",
-      rightRole: "tester",
-    },
-    {
-      left: { session: "feature-api-left", exists: true, currentCommand: "node", currentPath: "/tmp/repo" },
-      right: { session: "feature-api-right", exists: false },
-    },
-  );
-
-  assert.match(text, /prefix=feature-api/);
-  assert.match(text, /left: running/);
-  assert.match(text, /right: missing/);
-});

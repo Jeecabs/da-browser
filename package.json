@@ -1,39 +1,18 @@
 {
-  "name": "lachlan-aa-pi-extensions",
+  "name": "pi-browser-ops",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
-  "description": "Custom pi extensions, browser automation, process tools, and themes.",
+  "description": "Private pi package for browser automation tools powered by agent-browser.",
   "keywords": [
-    "pi-package"
+    "pi-package",
+    "browser-automation",
+    "agent-browser"
   ],
   "pi": {
     "extensions": [
-      "./src/index.ts",
-      "./src/start-quote.ts",
-      "./src/supabase/index.ts",
-      "./src/linear/index.ts",
-      "./src/github/index.ts",
-      "./src/posthog/index.ts",
-      "./src/fallow/index.ts",
-      "./src/supervisor/index.ts",
-      "./src/whiskd/index.ts",
-      "./src/html-artifacts/index.ts",
-      "./src/video/index.ts",
-      "./src/excalidraw/index.ts",
-      "./src/watchtower.ts",
-      "./src/vicecity/index.ts",
-      "./src/audio-glow/index.ts"
-    ],
-    "themes": [
-      "./themes"
-    ],
-    "skills": [
-      "./skills"
-    ],
-    "prompts": [
-      "./prompts"
+      "./src/index.ts"
     ]
   },
   "scripts": {
@@ -59,8 +38,8 @@
     "@earendil-works/pi-ai": "^0.78.1",
     "@earendil-works/pi-coding-agent": "^0.78.1",
     "@earendil-works/pi-tui": "^0.78.1",
-    "typebox": "1.1.38",
     "@types/node": "^24.3.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "typebox": "1.1.38"
   }
 }

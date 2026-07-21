@@ -21,6 +21,7 @@ import {
   normalizeTabList,
   unwrapCliEnvelope,
 } from "../src/agent-browser-output.ts";
+import { summarizeToolText } from "../src/compact-tool-renderer.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
 import { classifyCdpError } from "../src/cdp-errors.ts";
 import {
@@ -53,6 +54,28 @@ test("prepareCompatArguments applies aliases and primitive coercions", () => {
     lines: 42,
     enabled: true,
   });
+});
+
+
+test("compact tool summary folds minified JSON and caps long lines", () => {
+  const json = JSON.stringify({
+    summary: {
+      total_issues: 15,
+      unused_dependencies: 5,
+      test_only_dependencies: 6,
+    },
+    unused_dependencies: [{ package_name: "autoprefixer" }],
+  });
+  const structured = summarizeToolText(json);
+  assert.match(structured.summary, /^15 issues/);
+  assert.match(structured.summary, /5 unused dependencies/);
+  assert.doesNotMatch(structured.summary, /autoprefixer/);
+  assert.equal(structured.hasHiddenText, true);
+
+  const long = summarizeToolText("x".repeat(500));
+  assert.equal(long.summary.length, 180);
+  assert.match(long.summary, /…$/);
+  assert.equal(long.hasHiddenText, true);
 });
 
 

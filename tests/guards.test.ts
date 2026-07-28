@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractAgentBrowserVersion,
+  supportsAgentBrowserVersion,
+} from "../src/agent-browser-version.ts";
+import {
+  buildA11yArgs,
   buildFindArgs,
+  buildHarArgs,
   buildIsArgs,
   buildReactArgs,
   buildReadArgs,
@@ -30,6 +36,8 @@ import {
   CONTROLLED_TAB_CLEAR_SCRIPT,
 } from "../src/controlled-tab.ts";
 import {
+  browserSummaryWithVersion,
+  browserWidgetLines,
   connectionHealth,
   createBrowserState,
   mergeBrowserState,
@@ -37,6 +45,21 @@ import {
   resolveBrowserPort,
   serializeBrowserState,
 } from "../src/state.ts";
+
+test("agent-browser version checks accept the minimum and newer releases", () => {
+  assert.equal(extractAgentBrowserVersion("agent-browser 0.33.1"), "0.33.1");
+  assert.equal(extractAgentBrowserVersion("agent-browser v0.34.0-beta.1"), "0.34.0-beta.1");
+  assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
+
+  assert.equal(supportsAgentBrowserVersion("0.31.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.33.0"), false);
+  assert.equal(supportsAgentBrowserVersion("0.33.1-beta.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.33.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.34.0"), true);
+  assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
+  assert.equal(supportsAgentBrowserVersion("not-semver"), false);
+});
+
 
 test("prepareCompatArguments applies aliases and primitive coercions", () => {
   const prepared = prepareCompatArguments(
@@ -76,6 +99,20 @@ test("compact tool summary folds minified JSON and caps long lines", () => {
   assert.equal(long.summary.length, 180);
   assert.match(long.summary, /…$/);
   assert.equal(long.hasHiddenText, true);
+});
+
+
+test("buildA11yArgs composes URL, WCAG tags, selector, and JSON output", () => {
+  assert.deepEqual(
+    buildA11yArgs({
+      url: "https://example.com",
+      tags: ["wcag2a", " wcag2aa ", ""],
+      selector: "#main",
+      json: true,
+    }),
+    ["a11y", "https://example.com", "--tags", "wcag2a,wcag2aa", "--selector", "#main", "--json"],
+  );
+  assert.deepEqual(buildA11yArgs({}), ["a11y"]);
 });
 
 
@@ -394,6 +431,29 @@ test("normalizeTabList and formatTabTable surface stable ids and labels", () => 
 });
 
 
+test("buildHarArgs validates capture mode and chooses the output path on stop", () => {
+  assert.deepEqual(buildHarArgs({ action: "start" }), ["network", "har", "start"]);
+  assert.deepEqual(buildHarArgs({ action: "start", content: "all" }), [
+    "network",
+    "har",
+    "start",
+    "--content",
+    "all",
+  ]);
+  assert.deepEqual(buildHarArgs({ action: "stop", file: "/tmp/network.har" }), [
+    "network",
+    "har",
+    "stop",
+    "/tmp/network.har",
+  ]);
+  assert.throws(
+    () => buildHarArgs({ action: "start", file: "/tmp/network.har" }),
+    /does not accept a file path/,
+  );
+  assert.throws(() => buildHarArgs({ action: "stop", content: "text" }), /does not accept a content mode/);
+});
+
+
 test("buildRecordArgs and buildTraceArgs cover start with/without label and stop", () => {
   assert.deepEqual(buildRecordArgs({ action: "start" }), ["record", "start"]);
   assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm" }), [
@@ -467,12 +527,15 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
       port: 9444,
       dashboardPort: 4848,
       connected: true,
+      agentBrowserVersion: "0.33.1",
+      agentBrowserCompatible: true,
       currentUrl: "https://linear.app/foo",
       currentDomain: "linear.app",
       dashboardUrl: "http://localhost:4848",
       lastAction: "open",
       recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
       tracing: { file: "/tmp/trace.zip", startedAt: 1700000001000 },
+      har: { file: "/tmp/network.har", startedAt: 1700000002000 },
     },
     9222,
     4848,
@@ -482,6 +545,8 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
     port: 9444,
     dashboardPort: 4848,
     connected: true,
+    agentBrowserVersion: "0.33.1",
+    agentBrowserCompatible: true,
     currentUrl: "https://linear.app/foo",
     currentDomain: "linear.app",
     dashboardUrl: "http://localhost:4848",
@@ -494,7 +559,21 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
     lastVerifiedAt: undefined,
     recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
     tracing: { file: "/tmp/trace.zip", startedAt: 1700000001000 },
+    har: { file: "/tmp/network.har", startedAt: 1700000002000 },
   });
+
+  assert.match(browserWidgetLines(restored).join("\n"), /rec trace har/);
+  assert.match(
+    browserSummaryWithVersion(restored, {
+      portListening: true,
+      pageTargets: 2,
+      browser: "Chrome/150",
+      agentBrowserVersion: "0.33.1",
+      agentBrowserCompatible: true,
+      requiredAgentBrowserVersion: "0.33.1",
+    }),
+    /cli\s+agent-browser 0\.33\.1\s+ok/,
+  );
 });
 
 

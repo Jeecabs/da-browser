@@ -4,7 +4,14 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import {
+  extractAgentBrowserVersion,
+  MIN_AGENT_BROWSER_VERSION,
+  supportsAgentBrowserVersion,
+} from "./agent-browser-version.js";
+import {
+  buildA11yArgs,
   buildFindArgs,
+  buildHarArgs,
   buildIsArgs,
   buildReactArgs,
   buildReadArgs,
@@ -15,8 +22,10 @@ import {
   buildTraceArgs,
   buildWaitArgs,
   MUTATING_FIND_ACTIONS,
+  type A11yArgsOptions,
   type CaptureAction,
   type FindArgsOptions,
+  type HarContentMode,
   type IsArgsOptions,
   type ReactArgsOptions,
   type ReadArgsOptions,
@@ -76,10 +85,12 @@ export { unwrapCliEnvelope, AgentBrowserCliError } from "./agent-browser-output.
 export type { BrowserGetWhat } from "./agent-browser-output.js";
 export type { CdpErrorKind } from "./cdp-errors.js";
 export type {
+  A11yArgsOptions,
   CaptureAction,
   CaptureArgsOptions,
   FindAction,
   FindArgsOptions,
+  HarContentMode,
   IsArgsOptions,
   IsCheck,
   ReactArgsOptions,
@@ -109,13 +120,35 @@ interface CommandResult {
   killed?: boolean;
 }
 
+interface AgentBrowserVersionProbe {
+  installed?: string;
+  compatible: boolean;
+  required: string;
+}
+
+function accessibilityCounts(payload: unknown): {
+  violations?: number;
+  incomplete?: number;
+  passes?: number;
+  inapplicable?: number;
+} {
+  if (!isPlainObject(payload) || !isPlainObject(payload.counts)) return {};
+  const counts = payload.counts;
+  return {
+    violations: typeof counts.violations === "number" ? counts.violations : undefined,
+    incomplete: typeof counts.incomplete === "number" ? counts.incomplete : undefined,
+    passes: typeof counts.passes === "number" ? counts.passes : undefined,
+    inapplicable: typeof counts.inapplicable === "number" ? counts.inapplicable : undefined,
+  };
+}
+
 export async function connectBrowser(
   pi: ExtensionAPI,
   state: BrowserState,
   ctx: ExtensionContext,
 ): Promise<BrowserActionResult> {
   await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, ctx);
+  await assertAgentBrowserInstalled(pi, state, ctx);
 
   const debugPortListening = await isPortListening(pi, state.port, ctx);
   if (!debugPortListening) {
@@ -245,7 +278,7 @@ export async function readBrowserContent(
   params: ReadArgsOptions & { label?: string },
 ): Promise<BrowserActionResult> {
   await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, ctx);
+  await assertAgentBrowserInstalled(pi, state, ctx);
 
   // Always ask the CLI for JSON internally so we can preserve source/contentType
   // diagnostics while returning plain content by default.
@@ -874,6 +907,51 @@ export async function vitalsBrowser(
   };
 }
 
+export async function auditAccessibility(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: A11yArgsOptions & { label?: string },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+
+  // Keep the CLI response structured so counts, selectors, and incomplete checks remain
+  // machine-readable. formatToolText spills oversized reports into the artifact directory.
+  const args = buildA11yArgs({ ...params, json: true });
+  const parsed = await runAgentBrowserJSON(pi, args, ctx, 120_000, {
+    port: state.port,
+    local: isLocalUrl(params.url) || isLocalUrl(state.currentUrl),
+  });
+  const report = JSON.stringify(parsed ?? null, null, 2);
+  const formatted = await formatToolText(report, {
+    label: `browser-${params.label ?? "a11y-audit"}`,
+    mode: "head",
+  });
+
+  await refreshCurrentUrl(pi, state, ctx);
+  await markControlledTab(pi, state, ctx);
+  const counts = accessibilityCounts(parsed);
+
+  state.connected = true;
+  state.lastAction = buildA11yArgs(params).join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Accessibility audit: ${counts.violations ?? "?"} violation${counts.violations === 1 ? "" : "s"}, ${counts.incomplete ?? "?"} incomplete.`,
+    contentText: formatted.text,
+    artifacts: formatted.fullOutputFile ? [formatted.fullOutputFile] : undefined,
+    diagnostics: {
+      url: params.url,
+      tags: params.tags,
+      selector: params.selector,
+      axeVersion: isPlainObject(parsed) ? parsed.axeVersion : undefined,
+      counts,
+      fullOutputFile: formatted.fullOutputFile,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
 export async function tabBrowser(
   pi: ExtensionAPI,
   state: BrowserState,
@@ -990,6 +1068,55 @@ export async function setBrowser(
   };
 }
 
+export async function harBrowser(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: { action: CaptureAction; content?: HarContentMode; label?: string },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await ensureArtifactDir(state);
+
+  if (params.action === "start") {
+    const file = artifactPath(state, params.label ?? "network", "har");
+    const args = buildHarArgs({ action: "start", content: params.content });
+    await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+    state.har = { file, startedAt: Date.now() };
+    state.connected = true;
+    state.lastAction = args.join(" ");
+    state.lastError = undefined;
+
+    return {
+      summary: `Started HAR capture (${params.content ?? "text"} bodies) → ${file}`,
+      diagnostics: {
+        action: "start",
+        content: params.content ?? "text",
+        file,
+        currentUrl: state.currentUrl,
+      },
+    };
+  }
+
+  const previous = state.har;
+  const file = previous?.file ?? artifactPath(state, params.label ?? "network", "har");
+  const args = buildHarArgs({ action: "stop", file });
+  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  state.har = undefined;
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+
+  return {
+    summary: `Stopped HAR capture → ${file}`,
+    artifacts: [file],
+    diagnostics: {
+      action: "stop",
+      file,
+      durationMs: previous ? Date.now() - previous.startedAt : undefined,
+    },
+  };
+}
+
 export async function recordBrowser(
   pi: ExtensionAPI,
   state: BrowserState,
@@ -1078,6 +1205,7 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
   state.dashboardUrl = undefined;
   state.recording = undefined;
   state.tracing = undefined;
+  state.har = undefined;
 }
 
 
@@ -1102,18 +1230,45 @@ async function clearControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: Ex
 
 async function ensureReady(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
   await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, ctx);
+  await assertAgentBrowserInstalled(pi, state, ctx);
 }
 
-async function assertAgentBrowserInstalled(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-  const result = (await pi.exec("which", ["agent-browser"], {
-    signal: ctx.signal,
-    timeout: 5_000,
-  })) as CommandResult;
-
-  if (result.code !== 0) {
-    throw new Error("agent-browser CLI not found on PATH. Install it with `npm i -g agent-browser`.");
+async function assertAgentBrowserInstalled(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<void> {
+  const probe = await probeAgentBrowserVersion(pi, state, ctx);
+  if (!probe.installed) {
+    throw new Error("agent-browser CLI not found or returned an unreadable version. Install it with `npm i -g agent-browser@latest`.");
   }
+  if (!probe.compatible) {
+    throw new Error(
+      `da-browser requires agent-browser >=${probe.required}; found ${probe.installed}. Upgrade with \`npm i -g agent-browser@latest\`.`,
+    );
+  }
+}
+
+async function probeAgentBrowserVersion(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<AgentBrowserVersionProbe> {
+  let installed: string | undefined;
+  try {
+    const result = (await pi.exec("agent-browser", ["--version"], {
+      signal: ctx.signal,
+      timeout: 5_000,
+    })) as CommandResult;
+    if (result.code === 0) installed = extractAgentBrowserVersion(joinAgentBrowserOutput(result));
+  } catch {
+    // Status must remain usable when the executable is missing or cannot spawn.
+  }
+
+  const compatible = installed !== undefined && supportsAgentBrowserVersion(installed);
+  state.agentBrowserVersion = installed;
+  state.agentBrowserCompatible = compatible;
+  return { installed, compatible, required: MIN_AGENT_BROWSER_VERSION };
 }
 
 interface CdpTarget {
@@ -1237,10 +1392,17 @@ export async function verifyConnection(
   state: BrowserState,
   ctx: ExtensionContext,
 ): Promise<ConnectionProbe> {
+  const agentBrowser = await probeAgentBrowserVersion(pi, state, ctx);
   const portListening = await isPortListening(pi, state.port, ctx);
   if (!portListening) {
     state.connected = false;
-    return { portListening: false, pageTargets: 0 };
+    return {
+      portListening: false,
+      pageTargets: 0,
+      agentBrowserVersion: agentBrowser.installed,
+      agentBrowserCompatible: agentBrowser.compatible,
+      requiredAgentBrowserVersion: agentBrowser.required,
+    };
   }
 
   const targets = await fetchTargets(pi, state.port, ctx);
@@ -1258,6 +1420,9 @@ export async function verifyConnection(
     pageTargets: pages.length,
     attachedUrl: typeof attached?.url === "string" ? attached.url : undefined,
     browser,
+    agentBrowserVersion: agentBrowser.installed,
+    agentBrowserCompatible: agentBrowser.compatible,
+    requiredAgentBrowserVersion: agentBrowser.required,
   };
 }
 

@@ -56,6 +56,28 @@ export function buildReadArgs(params: ReadArgsOptions): string[] {
   return args;
 }
 
+export interface A11yArgsOptions {
+  /** Optional URL. Omit to audit the active page. */
+  url?: string;
+  /** Axe/WCAG tags such as wcag2a and wcag2aa. */
+  tags?: string[];
+  /** Scope the audit to a CSS subtree. */
+  selector?: string;
+  /** Return structured violations and incomplete checks. */
+  json?: boolean;
+}
+
+export function buildA11yArgs(params: A11yArgsOptions): string[] {
+  const args = ["a11y"];
+  if (params.url) args.push(params.url);
+
+  const tags = params.tags?.map((tag) => tag.trim()).filter(Boolean);
+  if (tags?.length) args.push("--tags", tags.join(","));
+  if (params.selector) args.push("--selector", params.selector);
+  if (params.json) args.push("--json");
+  return args;
+}
+
 export const FIND_ACTIONS = ["click", "fill", "type", "hover", "focus", "check", "uncheck"] as const;
 export type FindAction = (typeof FIND_ACTIONS)[number];
 
@@ -343,6 +365,32 @@ export function buildReactArgs(params: ReactArgsOptions): string[] {
 }
 
 export type CaptureAction = "start" | "stop";
+export type HarContentMode = "text" | "all" | "none";
+
+export interface HarArgsOptions {
+  action: CaptureAction;
+  /** Response-body capture mode. Defaults to text in agent-browser. */
+  content?: HarContentMode;
+  /** Output path, accepted only when stopping. */
+  file?: string;
+}
+
+export function buildHarArgs(params: HarArgsOptions): string[] {
+  const args = ["network", "har", params.action];
+  if (params.action === "start") {
+    if (params.file !== undefined) {
+      throw new Error("browser_har start does not accept a file path; the path is selected when stopping.");
+    }
+    if (params.content) args.push("--content", params.content);
+    return args;
+  }
+
+  if (params.content !== undefined) {
+    throw new Error("browser_har stop does not accept a content mode.");
+  }
+  if (params.file) args.push(params.file);
+  return args;
+}
 
 export interface CaptureArgsOptions {
   action: CaptureAction;

@@ -25,7 +25,7 @@ A browser-down, target-gone, or busy-page state that should produce a clear reco
 _Avoid_: Raw protocol failure, silent retry loop
 
 **Browser Artifact**:
-Screenshot, snapshot, eval output, video, or trace file saved under the deterministic `/tmp/da-browser/<cwd-slug>` directory.
+Screenshot, snapshot, eval output, accessibility report, HAR capture, video, or trace file saved under the deterministic `/tmp/da-browser/<cwd-slug>` directory.
 _Avoid_: Global permanent artifact store
 
 ## Relationships
@@ -33,6 +33,7 @@ _Avoid_: Global permanent artifact store
 - **da browser** is installed separately from `pi-extensions`.
 - **Trusted Browser Automation** depends on the local Arc/Chromium auth context and CDP port.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.
+- **da browser** checks its minimum supported `agent-browser` version at session start and before each action. Newer versions remain valid.
 - **Controlled Tab** state is session/branch scoped, not global truth.
 - **Recoverable CDP Failure** should say whether to relaunch Arc, reconnect, wait, or retry.
 - **Browser Artifacts** are temporary evidence for agent workflows and visual QA.

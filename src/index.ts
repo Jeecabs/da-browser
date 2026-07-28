@@ -3,6 +3,7 @@ import { Type, type TSchema } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 
 import {
+  auditAccessibility,
   checkpointBrowserPage,
   cleanupBrowserArtifacts,
   clickBrowserElement,
@@ -12,6 +13,7 @@ import {
   findBrowserElement,
   debugBrowserPage,
   getBrowserInfo,
+  harBrowser,
   isBrowserState,
   navigateBrowser,
   openBrowserPage,
@@ -31,9 +33,11 @@ import {
   waitInBrowser,
   CdpError,
   type BrowserActionResult,
+  type A11yArgsOptions,
   type BrowserGetWhat,
   type CaptureAction,
   type FindAction,
+  type HarContentMode,
   type IsCheck,
   type ReactCommand,
   type ReadArgsOptions,
@@ -43,7 +47,7 @@ import {
 } from "./agent-browser.js";
 import {
   browserStatusText,
-  browserSummary,
+  browserSummaryWithVersion,
   connectionGlyph,
   connectionHealth,
   createBrowserState,
@@ -98,6 +102,7 @@ const BROWSER_SET_SETTING_SCHEMA = StringEnum([
 ] as const);
 const BROWSER_SET_MEDIA_SCHEMA = StringEnum(["dark", "light"] as const);
 const BROWSER_CAPTURE_ACTION_SCHEMA = StringEnum(["start", "stop"] as const);
+const BROWSER_HAR_CONTENT_SCHEMA = StringEnum(["text", "all", "none"] as const);
 const BROWSER_WAIT_LOAD_SCHEMA = StringEnum(["load", "domcontentloaded", "networkidle"] as const);
 const BROWSER_WAIT_STATE_SCHEMA = StringEnum(["visible", "hidden", "attached", "detached"] as const);
 const BROWSER_REACT_COMMAND_SCHEMA = StringEnum([
@@ -122,6 +127,8 @@ const BROWSER_GUIDELINES = [
   "browser_record start spawns a fresh browser context (cookies and localStorage preserved); re-snapshot before the next action.",
   "Use browser_is for boolean asserts (visible/enabled/checked) instead of regex-matching browser_get text.",
   "For React/Next.js debugging: browser_open with enableReactDevtools=true, then browser_react (tree/inspect/renders/suspense). browser_vitals and browser_nav pushstate work on any page without the hook.",
+  "Use browser_a11y for embedded axe-core WCAG audits; incomplete checks still need manual review.",
+  "HAR files can contain cookies, authorization headers, and response bodies. Keep browser_har captures temporary and avoid sharing them without inspection.",
   "On a connection error: a lost tab is auto-retried once; if it still fails the browser is likely down — call browser_connect to re-establish the controlled tab, then retry. browser_status actively probes the port, so trust it over assumptions about connection state.",
   "alert/beforeunload dialogs are auto-accepted by agent-browser; for confirm/prompt dialogs use browser_command ['dialog','accept'] or ['dialog','dismiss'].",
 ];
@@ -133,9 +140,11 @@ export default function (pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
     const t = ctx.ui.theme;
     const health = connectionHealth(state);
-    const color = health === "ok" ? "success" : health === "suspect" ? "warning" : "dim";
+    const versionMismatch = state.agentBrowserCompatible === false;
+    const color = versionMismatch ? "warning" : health === "ok" ? "success" : health === "suspect" ? "warning" : "dim";
     const dot = t.fg(color, connectionGlyph(health));
-    const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
+    const browserLabel = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
+    const label = versionMismatch ? `agent-browser ${state.agentBrowserVersion ?? "missing"}` : browserLabel;
     ctx.ui.setStatus("browser-ops", `${dot} ${t.fg("muted", label)}`);
   };
 
@@ -187,14 +196,19 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     loadStateFromSession(ctx);
-    // Restored state can claim "connected" from a previous session whose browser is long
-    // gone. Revalidate against the live port so the first widget paint is honest.
-    if (state.connected) {
-      try {
-        await verifyConnection(pi, state, ctx);
-      } catch {
-        /* leave restored state as-is if the probe itself fails */
+    // Probe both the CLI version and CDP port on every start. Persisted compatibility can
+    // be stale after either da-browser or the globally installed CLI changes.
+    try {
+      const probe = await verifyConnection(pi, state, ctx);
+      if (!probe.agentBrowserCompatible && ctx.hasUI) {
+        const installed = probe.agentBrowserVersion ?? "not found";
+        ctx.ui.notify(
+          `da-browser requires agent-browser >=${probe.requiredAgentBrowserVersion}; found ${installed}. Run: npm i -g agent-browser@latest`,
+          "warning",
+        );
       }
+    } catch {
+      /* keep session startup usable if the probe itself fails */
     }
     refreshUi(ctx);
   });
@@ -230,7 +244,7 @@ export default function (pi: ExtensionAPI) {
           const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
           refreshUi(ctx);
           persistCommandState();
-          ctx.ui.notify(browserSummary(state, probe), "info");
+          ctx.ui.notify(browserSummaryWithVersion(state, probe), "info");
           return;
         }
 
@@ -254,7 +268,7 @@ export default function (pi: ExtensionAPI) {
   registerBrowserTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Probe the live debugging port and show verified connection state, page-target count, browser version, and artifact locations",
+    description: "Probe agent-browser version compatibility, the live debugging port, page targets, browser version, and artifact locations",
     promptSnippet: "Inspect the browser automation state before continuing a multi-step dashboard task",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({}),
@@ -262,7 +276,7 @@ export default function (pi: ExtensionAPI) {
       const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
       refreshUi(ctx);
       return {
-        content: [{ type: "text", text: browserSummary(state, probe) }],
+        content: [{ type: "text", text: browserSummaryWithVersion(state, probe) }],
         details: {
           probe,
           browserState: serializeBrowserState(state),
@@ -986,6 +1000,38 @@ export default function (pi: ExtensionAPI) {
   });
 
   registerBrowserTool({
+    name: "browser_har",
+    label: "Browser HAR",
+    description:
+      "Start or stop a HAR network capture. Text response bodies are embedded by default; all includes base64 binary bodies; none records metadata only.",
+    promptSnippet: "Capture browser network traffic and response bodies as a HAR artifact",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      action: BROWSER_CAPTURE_ACTION_SCHEMA,
+      content: Type.Optional(BROWSER_HAR_CONTENT_SCHEMA),
+      label: Type.Optional(Type.String({ description: "Label used for the .har artifact path" })),
+    }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { mode: "content", bodyMode: "content" },
+      });
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await harBrowser(pi, state, ctx, {
+          action: params.action as CaptureAction,
+          content: params.content as HarContentMode | undefined,
+          label: params.label,
+        });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  registerBrowserTool({
     name: "browser_record",
     label: "Browser Record",
     description: "Start or stop video recording (.webm) of the current browser context for QA artifact capture",
@@ -1090,6 +1136,44 @@ export default function (pi: ExtensionAPI) {
           onlyDynamic: params.onlyDynamic,
           label: params.label,
         });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  registerBrowserTool({
+    name: "browser_a11y",
+    label: "Browser Accessibility",
+    description:
+      "Run an embedded axe-core accessibility audit on the active page or a URL, with optional WCAG tag filtering and selector scoping.",
+    promptSnippet: "Audit a page for accessibility violations and incomplete manual checks",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      url: Type.Optional(Type.String({ description: "URL to navigate to and audit. Omit to audit the current page." })),
+      tags: Type.Optional(
+        Type.Array(Type.String(), { description: "Axe/WCAG tags, e.g. wcag2a and wcag2aa" }),
+      ),
+      selector: Type.Optional(Type.String({ description: "CSS selector that scopes the audit to one subtree" })),
+      label: Type.Optional(Type.String({ description: "Optional artifact label for a large report" })),
+    }),
+    prepareArguments(args) {
+      const prepared = prepareCompatArguments(args, {
+        aliases: { href: "url", scope: "selector", wcagTags: "tags" },
+      }) as Record<string, unknown>;
+      if (typeof prepared.tags === "string") {
+        return {
+          ...prepared,
+          tags: prepared.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        };
+      }
+      return prepared;
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await auditAccessibility(pi, state, ctx, params as A11yArgsOptions & { label?: string });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

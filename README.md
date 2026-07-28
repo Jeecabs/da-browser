@@ -42,8 +42,16 @@ Reload pi if already running:
 
 ## Runtime prerequisites
 
-- `agent-browser` on `PATH`
+- `agent-browser` 0.33.1 or newer on `PATH`
 - Arc/Chromium launched with a remote debugging port, default `9222`
+
+Install or upgrade the CLI:
+
+```bash
+npm install -g agent-browser@latest
+```
+
+The extension checks this minimum on session start and before every browser action. The extension accepts newer compatible versions. `/browser status` and `browser_status` show the installed version and required minimum.
 
 Useful Arc launch command:
 
@@ -84,6 +92,7 @@ Override defaults:
 | `browser_nav` | Back, forward, reload, or SPA pushstate |
 | `browser_get` | Read text/html/value/attr/title/url/count/box/styles/cdp-url |
 | `browser_debug` | Read console logs, page errors, network requests |
+| `browser_har` | Capture network traffic and response bodies as HAR |
 | `browser_command` | Run raw `agent-browser` args with active CDP port |
 | `browser_eval` | Evaluate JS in page context |
 | `browser_tab` | List/open/close/switch tabs |
@@ -93,6 +102,7 @@ Override defaults:
 | `browser_trace` | Start/stop Playwright trace zip |
 | `browser_checkpoint` | Save screenshot + interactive snapshot |
 | `browser_react` | Inspect React tree/fibers/renders/Suspense |
+| `browser_a11y` | Run embedded axe-core accessibility audits |
 | `browser_vitals` | Measure web vitals and React hydration timing |
 
 ## Development
@@ -107,6 +117,7 @@ pnpm test
 
 - Browser refs (`@e12`) come from the latest snapshot and go stale after DOM mutations.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
-- `/browser status` and `browser_status` actively probe the port; trust them over cached state.
+- `/browser status` and `browser_status` actively probe the port. Trust them over cached state.
 - If the controlled tab disappears, commands recreate a page target and retry once.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
+- HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

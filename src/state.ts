@@ -13,6 +13,8 @@ export interface BrowserState {
   dashboardPort: number;
   artifactDir: string;
   connected: boolean;
+  agentBrowserVersion?: string;
+  agentBrowserCompatible?: boolean;
   currentUrl?: string;
   currentDomain?: string;
   dashboardUrl?: string;
@@ -27,6 +29,7 @@ export interface BrowserState {
   lastVerifiedAt?: number;
   recording?: BrowserRecordingState;
   tracing?: BrowserRecordingState;
+  har?: BrowserRecordingState;
 }
 
 // Result of actively probing the debugging port (vs. trusting in-memory state). Returned
@@ -37,6 +40,9 @@ export interface ConnectionProbe {
   pageTargets: number;
   attachedUrl?: string;
   browser?: string;
+  agentBrowserVersion?: string;
+  agentBrowserCompatible: boolean;
+  requiredAgentBrowserVersion: string;
 }
 
 export function createBrowserState(
@@ -74,6 +80,9 @@ export function mergeBrowserState(
     port: resolvedPort,
     dashboardPort: resolvedDashboardPort,
     connected: Boolean(persisted.connected),
+    agentBrowserVersion: persisted.agentBrowserVersion,
+    agentBrowserCompatible:
+      typeof persisted.agentBrowserCompatible === "boolean" ? persisted.agentBrowserCompatible : undefined,
     currentUrl: persisted.currentUrl,
     currentDomain: persisted.currentDomain,
     dashboardUrl: persisted.dashboardUrl,
@@ -86,6 +95,7 @@ export function mergeBrowserState(
     lastVerifiedAt: typeof persisted.lastVerifiedAt === "number" ? persisted.lastVerifiedAt : undefined,
     recording: cloneRecording(persisted.recording),
     tracing: cloneRecording(persisted.tracing),
+    har: cloneRecording(persisted.har),
   };
 }
 
@@ -94,6 +104,8 @@ export function serializeBrowserState(state: BrowserState): Record<string, unkno
     port: state.port,
     dashboardPort: state.dashboardPort,
     connected: state.connected,
+    agentBrowserVersion: state.agentBrowserVersion,
+    agentBrowserCompatible: state.agentBrowserCompatible,
     currentUrl: state.currentUrl,
     currentDomain: state.currentDomain,
     dashboardUrl: state.dashboardUrl,
@@ -106,6 +118,7 @@ export function serializeBrowserState(state: BrowserState): Record<string, unkno
     lastVerifiedAt: state.lastVerifiedAt,
     recording: state.recording ? { ...state.recording } : undefined,
     tracing: state.tracing ? { ...state.tracing } : undefined,
+    har: state.har ? { ...state.har } : undefined,
   };
 }
 
@@ -190,8 +203,8 @@ export function browserWidgetLines(state: BrowserState): string[] {
   if (state.lastAction) {
     lines.push(`  ${state.lastAction}  ${formatRelativeTime(state.lastSnapshotAt)}`);
   }
-  if (state.recording || state.tracing) {
-    const flags = [state.recording ? "rec" : null, state.tracing ? "trace" : null]
+  if (state.recording || state.tracing || state.har) {
+    const flags = [state.recording ? "rec" : null, state.tracing ? "trace" : null, state.har ? "har" : null]
       .filter((s): s is string => Boolean(s))
       .join(" ");
     lines.push(`  ${flags}`);
@@ -203,7 +216,17 @@ export function browserWidgetLines(state: BrowserState): string[] {
   return lines;
 }
 
-export function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
+function agentBrowserVersionSummary(probe: ConnectionProbe): string {
+  const status = probe.agentBrowserCompatible ? "ok" : `requires >=${probe.requiredAgentBrowserVersion}`;
+  return `agent-browser ${probe.agentBrowserVersion ?? "not found"}  ${status}`;
+}
+
+export function browserSummaryWithVersion(state: BrowserState, probe?: ConnectionProbe): string {
+  const summary = browserSummary(state, probe);
+  return probe ? `${summary}\n  cli       ${agentBrowserVersionSummary(probe)}` : summary;
+}
+
+function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
   const health = connectionHealth(state);
   const verified = state.lastVerifiedAt ? `  verified ${formatRelativeTime(state.lastVerifiedAt)}` : "";
   const lines = [

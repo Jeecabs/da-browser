@@ -406,7 +406,9 @@ export default function (pi: ExtensionAPI) {
       timeoutMs: Type.Optional(Type.Number({ description: "Request timeout in milliseconds" })),
       maxOutput: Type.Optional(Type.Number({ description: "Maximum output characters before agent-browser truncates" })),
       allowedDomains: Type.Optional(
-        Type.Array(Type.String(), { description: "Allowed domain patterns, e.g. example.com or *.example.com" }),
+        Type.Array(Type.String(), {
+          description: "Allowed domain patterns for explicit URL reads only, e.g. example.com or *.example.com",
+        }),
       ),
       contentBoundaries: Type.Optional(Type.Boolean({ description: "Wrap page output in boundary markers" })),
       label: Type.Optional(Type.String({ description: "Optional artifact label for saved output" })),

@@ -10,6 +10,7 @@ import {
 } from "./agent-browser-version.js";
 import {
   buildA11yArgs,
+  buildCdpInvocationArgs,
   buildFindArgs,
   buildHarArgs,
   buildIsArgs,
@@ -178,8 +179,9 @@ export async function connectBrowser(
   // an old browser would silently absorb every command. Detach it if it's on the wrong port.
   await ensureDaemonOnPort(pi, state.port, ctx);
 
-  // Verify CDP connection works by fetching the current URL
-  await refreshCurrentUrl(pi, state, ctx);
+  // Verify CDP connection works by fetching the current URL. This probe must fail hard:
+  // status only proves the port exists, not that agent-browser can attach to it.
+  await refreshCurrentUrl(pi, state, ctx, false);
   await refreshDashboardUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -1334,7 +1336,7 @@ async function ensureDaemonOnPort(pi: ExtensionAPI, port: number, ctx: Extension
   }
   if (connectedPort === undefined || connectedPort === port) return;
 
-  await runAgentBrowser(pi, ["close"], ctx, 15_000, { allowFailure: true });
+  await runAgentBrowser(pi, ["close"], ctx, 15_000, { port, allowFailure: true });
 }
 
 async function fetchTargets(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<CdpTarget[]> {
@@ -1430,8 +1432,9 @@ async function refreshCurrentUrl(
   pi: ExtensionAPI,
   state: BrowserState,
   ctx: ExtensionContext,
+  allowFailure = true,
 ): Promise<void> {
-  const result = await runAgentBrowser(pi, ["get", "url"], ctx, 10_000, { port: state.port, allowFailure: true });
+  const result = await runAgentBrowser(pi, ["get", "url"], ctx, 10_000, { port: state.port, allowFailure });
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
@@ -1459,7 +1462,9 @@ async function runAgentBrowser(
   timeout: number,
   options: { allowFailure?: boolean; port?: number; local?: boolean } = {},
 ): Promise<string> {
-  let fullArgs = options.port !== undefined ? ["--cdp", String(options.port), ...args] : args;
+  let fullArgs = options.port !== undefined
+    ? buildCdpInvocationArgs(args, options.port, ctx.sessionManager.getSessionId())
+    : args;
   let effectiveTimeout = timeout;
 
   // agent-browser honors --timeout only for `wait` operations (waitForSelector and

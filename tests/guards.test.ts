@@ -7,6 +7,7 @@ import {
 } from "../src/agent-browser-version.ts";
 import {
   buildA11yArgs,
+  buildCdpInvocationArgs,
   buildFindArgs,
   buildHarArgs,
   buildIsArgs,
@@ -58,6 +59,41 @@ test("agent-browser version checks accept the minimum and newer releases", () =>
   assert.equal(supportsAgentBrowserVersion("0.34.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
+});
+
+
+test("CDP invocations isolate da-browser and clear incompatible inherited allowlists", () => {
+  const args = buildCdpInvocationArgs(
+    ["tab", "list", "--json"],
+    9222,
+    "019fc9ca-9938-7f57-bb66-b91a0da459e4",
+  );
+  assert.deepEqual(args.slice(0, 3), ["--namespace", "da-browser", "--session"]);
+  assert.match(args[3] ?? "", /^pi-[a-f0-9]{16}$/);
+  assert.ok((args[3]?.length ?? Infinity) <= 19, "session name must leave room for the macOS socket path");
+  assert.deepEqual(args.slice(4), [
+    "--allowed-domains",
+    "",
+    "--cdp",
+    "9222",
+    "tab",
+    "list",
+    "--json",
+  ]);
+  assert.equal(
+    args[3],
+    buildCdpInvocationArgs([], 9222, "019fc9ca-9938-7f57-bb66-b91a0da459e4")[3],
+    "same Pi session must reuse the same daemon session",
+  );
+  assert.notEqual(
+    args[3],
+    buildCdpInvocationArgs([], 9222, "019fc9ca-different-session")[3],
+    "different Pi sessions must remain isolated",
+  );
+  assert.throws(
+    () => buildCdpInvocationArgs(["read", "--allowed-domains", "example.com"], 9222, "test"),
+    /CDP-backed browser tools cannot use allowedDomains/,
+  );
 });
 
 

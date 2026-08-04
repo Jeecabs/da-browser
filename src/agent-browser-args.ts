@@ -1,3 +1,52 @@
+import { createHash } from "node:crypto";
+
+const DA_BROWSER_NAMESPACE = "da-browser";
+
+function shortAgentBrowserSessionName(piSessionId: string): string {
+  const source = piSessionId.trim() || "session";
+  // agent-browser puts namespace + session in a Unix socket path. A raw Pi UUID can exceed
+  // macOS's 103-byte socket-path limit, so retain 64 bits of a deterministic SHA-256 digest.
+  return `pi-${createHash("sha256").update(source).digest("hex").slice(0, 16)}`;
+}
+
+/**
+ * Build the global arguments for a command that attaches to an existing browser via CDP.
+ *
+ * agent-browser cannot combine a domain allowlist with pre-existing CDP pages because it
+ * cannot install WebRTC containment before their scripts run. An explicit empty value
+ * overrides AGENT_BROWSER_ALLOWED_DOMAINS/config inherited by pi. The dedicated namespace
+ * and pi-session-derived daemon keep that override away from other agent-browser workflows.
+ */
+export function buildCdpInvocationArgs(
+  commandArgs: readonly string[],
+  port: number,
+  piSessionId: string,
+): string[] {
+  if (commandArgs.some((arg) => arg === "--allowed-domains" || arg.startsWith("--allowed-domains="))) {
+    throw new Error(
+      "CDP-backed browser tools cannot use allowedDomains; use browser_read with an explicit URL or remove the allowlist.",
+    );
+  }
+  const managedFlag = commandArgs.find((arg) =>
+    ["--cdp", "--session", "--namespace"].some((flag) => arg === flag || arg.startsWith(`${flag}=`)),
+  );
+  if (managedFlag) {
+    throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
+  }
+
+  return [
+    "--namespace",
+    DA_BROWSER_NAMESPACE,
+    "--session",
+    shortAgentBrowserSessionName(piSessionId),
+    "--allowed-domains",
+    "",
+    "--cdp",
+    String(port),
+    ...commandArgs,
+  ];
+}
+
 export interface SnapshotArgsOptions {
   interactiveOnly?: boolean;
   /** Include href URLs on link elements (`-u`). */

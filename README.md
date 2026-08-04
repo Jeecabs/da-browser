@@ -118,6 +118,7 @@ pnpm test
 - Browser refs (`@e12`) come from the latest snapshot and go stale after DOM mutations.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
 - `/browser status` and `browser_status` actively probe the port. Trust them over cached state.
+- CDP actions use a dedicated daemon session and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
 - If the controlled tab disappears, commands recreate a page target and retry once.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

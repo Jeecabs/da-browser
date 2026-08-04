@@ -32,6 +32,7 @@ _Avoid_: Global permanent artifact store
 
 - **da browser** is installed separately from `pi-extensions`.
 - **Trusted Browser Automation** depends on the local Arc/Chromium auth context and CDP port.
+- **Trusted Browser Automation** cannot use agent-browser domain/WebRTC containment on pre-existing CDP pages. CDP commands run in a dedicated daemon session and explicitly clear inherited allowlists. Explicit-URL reads can still use them.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.
 - **da browser** checks its minimum supported `agent-browser` version at session start and before each action. Newer versions remain valid.
 - **Controlled Tab** state is session/branch scoped, not global truth.

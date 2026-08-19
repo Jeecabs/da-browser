@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const DA_BROWSER_NAMESPACE = "da-browser";
 
-function shortAgentBrowserSessionName(piSessionId: string): string {
+export function agentBrowserSessionName(piSessionId: string): string {
   const source = piSessionId.trim() || "session";
   // agent-browser puts namespace + session in a Unix socket path. A raw Pi UUID can exceed
   // macOS's 103-byte socket-path limit, so retain 64 bits of a deterministic SHA-256 digest.
@@ -16,6 +16,11 @@ function shortAgentBrowserSessionName(piSessionId: string): string {
  * cannot install WebRTC containment before their scripts run. An explicit empty value
  * overrides AGENT_BROWSER_ALLOWED_DOMAINS/config inherited by pi. The dedicated namespace
  * and pi-session-derived daemon keep that override away from other agent-browser workflows.
+ *
+ * Strict tab pinning is deliberately present on every call. agent-browser 0.34 makes the
+ * flag sticky, but repeating it also upgrades an already-running daemon before it can attach
+ * or execute a command. This guarantees that concurrent Pi sessions sharing one browser do
+ * not adopt, navigate, or react to one another's tabs.
  */
 export function buildCdpInvocationArgs(
   commandArgs: readonly string[],
@@ -28,7 +33,9 @@ export function buildCdpInvocationArgs(
     );
   }
   const managedFlag = commandArgs.find((arg) =>
-    ["--cdp", "--session", "--namespace"].some((flag) => arg === flag || arg.startsWith(`${flag}=`)),
+    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab"].some(
+      (flag) => arg === flag || arg.startsWith(`${flag}=`),
+    ),
   );
   if (managedFlag) {
     throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
@@ -38,7 +45,8 @@ export function buildCdpInvocationArgs(
     "--namespace",
     DA_BROWSER_NAMESPACE,
     "--session",
-    shortAgentBrowserSessionName(piSessionId),
+    agentBrowserSessionName(piSessionId),
+    "--pin-tab",
     "--allowed-domains",
     "",
     "--cdp",
@@ -181,13 +189,14 @@ export interface TabArgsOptions {
   url?: string;
   /** Memorable label for `new` (interchangeable with ids in later tab refs). */
   label?: string;
-  /** Stable tab id like `t2` (or a user-assigned label) for close/switch. */
+  /** Stable tab id like `t2`, a user-assigned label, or a CDP target id. */
   tab?: string;
 }
 
 /**
  * Tabs use stable string ids (`t1`, `t2`, …) since agent-browser 0.26; bare integers are
- * rejected by the CLI. Models habitually pass `2`, so coerce digits to `t2` here.
+ * rejected by the CLI. Models habitually pass `2`, so coerce digits to `t2` here. CDP
+ * target ids pass through unchanged and, since 0.34, remain usable across daemon restarts.
  */
 export function normalizeTabRef(tab: string): string {
   const trimmed = tab.trim();
@@ -220,9 +229,9 @@ export function buildTabArgs(params: TabArgsOptions): string[] {
         throw new Error("browser_tab switch does not accept a url.");
       }
       if (params.tab === undefined || !params.tab.trim()) {
-        throw new Error("browser_tab switch requires a tab id (like t2) or label.");
+        throw new Error("browser_tab switch requires a tab id (like t2), label, or CDP target id.");
       }
-      // Switching has no subcommand in the CLI: `tab <id|label>`.
+      // Switching has no subcommand in the CLI: `tab <id|label|targetId>`.
       return ["tab", normalizeTabRef(params.tab)];
     default: {
       const exhaustive: never = params.action;

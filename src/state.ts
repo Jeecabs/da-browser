@@ -17,6 +17,11 @@ export interface BrowserState {
   agentBrowserCompatible?: boolean;
   currentUrl?: string;
   currentDomain?: string;
+  /** CDP target id of the strictly pinned controlled tab (stable across daemon restarts). */
+  targetId?: string;
+  /** Recovery metadata retained when strict pinning reports `tab_gone`. */
+  tabGoneTargetId?: string;
+  tabGoneLastUrl?: string;
   dashboardUrl?: string;
   lastAction?: string;
   lastSnapshotAt?: number;
@@ -40,6 +45,12 @@ export interface ConnectionProbe {
   pageTargets: number;
   attachedUrl?: string;
   browser?: string;
+  agentBrowserSession: string;
+  pinTab: true;
+  tabBinding: TabBindingStatus;
+  targetId?: string;
+  lastUrl?: string;
+  bindingError?: string;
   agentBrowserVersion?: string;
   agentBrowserCompatible: boolean;
   requiredAgentBrowserVersion: string;
@@ -85,6 +96,9 @@ export function mergeBrowserState(
       typeof persisted.agentBrowserCompatible === "boolean" ? persisted.agentBrowserCompatible : undefined,
     currentUrl: persisted.currentUrl,
     currentDomain: persisted.currentDomain,
+    targetId: persisted.targetId,
+    tabGoneTargetId: persisted.tabGoneTargetId,
+    tabGoneLastUrl: persisted.tabGoneLastUrl,
     dashboardUrl: persisted.dashboardUrl,
     lastAction: persisted.lastAction,
     lastSnapshotAt: persisted.lastSnapshotAt,
@@ -108,6 +122,9 @@ export function serializeBrowserState(state: BrowserState): Record<string, unkno
     agentBrowserCompatible: state.agentBrowserCompatible,
     currentUrl: state.currentUrl,
     currentDomain: state.currentDomain,
+    targetId: state.targetId,
+    tabGoneTargetId: state.tabGoneTargetId,
+    tabGoneLastUrl: state.tabGoneLastUrl,
     dashboardUrl: state.dashboardUrl,
     lastAction: state.lastAction,
     lastSnapshotAt: state.lastSnapshotAt,
@@ -163,12 +180,21 @@ function cloneRecording(input?: BrowserRecordingState): BrowserRecordingState | 
 const VERIFIED_STALE_MS = 5 * 60_000;
 
 export type ConnectionHealth = "ok" | "suspect" | "down";
+export type TabBindingStatus = "pinned" | "gone" | "unknown" | "error";
+
+export function tabBindingStatus(state: BrowserState, bindingError?: string): TabBindingStatus {
+  if (bindingError !== undefined) return "error";
+  if (state.tabGoneTargetId) return "gone";
+  if (state.targetId) return "pinned";
+  return "unknown";
+}
 
 // Honest connection state: down when not connected, suspect when connected but not
 // confirmed recently, ok otherwise. Keeps the dot from claiming \u25CF after the browser
 // silently died. `now` is injectable for testing.
 export function connectionHealth(state: BrowserState, now = Date.now()): ConnectionHealth {
   if (!state.connected) return "down";
+  if (state.tabGoneTargetId) return "suspect";
   if (state.lastVerifiedAt !== undefined && now - state.lastVerifiedAt > VERIFIED_STALE_MS) {
     return "suspect";
   }
@@ -197,7 +223,9 @@ export function browserWidgetLines(state: BrowserState): string[] {
   const health = connectionHealth(state);
   const lines = [`${connectionGlyph(health)} browser  ${connectionWord(health)}`];
 
-  if (state.currentDomain) {
+  if (state.tabGoneTargetId) {
+    lines.push(`  pinned tab gone  ${state.tabGoneTargetId}`);
+  } else if (state.currentDomain) {
     lines.push(`  ${state.currentDomain}`);
   }
   if (state.lastAction) {
@@ -233,6 +261,8 @@ function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
     `${connectionGlyph(health)} ${connectionWord(health)}  cdp:${state.port}${verified}`,
     `  url       ${state.currentUrl ?? "-"}`,
     `  domain    ${state.currentDomain ?? "-"}`,
+    `  pin       strict${state.tabGoneTargetId ? " (tab gone)" : ""}`,
+    `  target    ${state.targetId ?? state.tabGoneTargetId ?? "-"}`,
     `  action    ${state.lastAction ?? "-"}`,
     `  snapshot  ${formatRelativeTime(state.lastSnapshotAt)}`,
     `  artifacts ${state.artifactDir}`,
@@ -241,11 +271,15 @@ function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
   // Probe details come from actively hitting the debugging port \u2014 the checkable truth
   // behind the asserted status above.
   if (probe) {
+    lines.push(`  session   ${probe.agentBrowserSession}`);
+    lines.push(`  binding   ${probe.tabBinding}`);
+    if (probe.bindingError !== undefined) lines.push(`  bind err  ${probe.bindingError}`);
     lines.push(`  port      ${probe.portListening ? "listening" : "not listening"}`);
     lines.push(`  targets   ${probe.pageTargets} page${probe.pageTargets === 1 ? "" : "s"}`);
     if (probe.browser) lines.push(`  browser   ${probe.browser}`);
   }
 
+  if (state.tabGoneLastUrl) lines.push(`  last url  ${state.tabGoneLastUrl}`);
   if (state.dashboardUrl) lines.push(`  dashboard ${state.dashboardUrl}`);
   if (state.recording) lines.push(`  recording ${state.recording.file}`);
   if (state.tracing) lines.push(`  tracing   ${state.tracing.file}`);

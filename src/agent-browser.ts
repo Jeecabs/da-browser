@@ -9,6 +9,7 @@ import {
   supportsAgentBrowserVersion,
 } from "./agent-browser-version.js";
 import {
+  agentBrowserSessionName,
   buildA11yArgs,
   buildCdpInvocationArgs,
   buildFindArgs,
@@ -49,7 +50,9 @@ import {
   arcRelaunchCommand,
   CdpError,
   classifyCdpError,
+  extractTabGoneDetails,
   friendlyCdpMessage,
+  sanitizeTabRecoveryUrl,
 } from "./cdp-errors.js";
 import {
   controlledTabLabel,
@@ -65,6 +68,7 @@ import {
   normalizeRef,
   resolveControlBannerEnabled,
   sanitizeArtifactLabel,
+  tabBindingStatus,
 } from "./state.js";
 import { formatToolText } from "./tool-output.js";
 
@@ -180,8 +184,19 @@ export async function connectBrowser(
   await ensureDaemonOnPort(pi, state.port, ctx);
 
   // Verify CDP connection works by fetching the current URL. This probe must fail hard:
-  // status only proves the port exists, not that agent-browser can attach to it.
-  await refreshCurrentUrl(pi, state, ctx, false);
+  // status only proves the port exists, not that agent-browser can attach to it. A prior
+  // pinned target may legitimately be gone; browser_connect is the explicit recovery action,
+  // so bind a fresh tab here rather than weakening the pin or adopting a neighboring tab.
+  let recoveredPinnedTab = false;
+  try {
+    await refreshCurrentUrl(pi, state, ctx, false);
+  } catch (error) {
+    if (!(error instanceof CdpError) || error.kind !== "tab-gone") throw error;
+    await runAgentBrowser(pi, ["tab", "new"], ctx, 30_000, { port: state.port });
+    recoveredPinnedTab = true;
+    await refreshCurrentUrl(pi, state, ctx, false);
+  }
+  await refreshActiveTarget(pi, state, ctx);
   await refreshDashboardUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
@@ -190,9 +205,15 @@ export async function connectBrowser(
   state.lastError = undefined;
 
   return {
-    summary: `Connected to browser via CDP on port ${state.port}.`,
+    summary: recoveredPinnedTab
+      ? `Connected to browser via CDP on port ${state.port}; replaced the missing pinned tab.`
+      : `Connected to browser via CDP on port ${state.port} with strict tab pinning.`,
     diagnostics: {
       port: state.port,
+      agentBrowserSession: agentBrowserSessionName(ctx.sessionManager.getSessionId()),
+      pinTab: true,
+      recoveredPinnedTab,
+      targetId: state.targetId,
       currentUrl: state.currentUrl,
       currentDomain: state.currentDomain,
       dashboardUrl: state.dashboardUrl,
@@ -963,6 +984,8 @@ export async function tabBrowser(
   await ensureReady(pi, state, ctx);
 
   const args = buildTabArgs(params);
+  const previousTargetId = state.targetId;
+  const previousUrl = state.currentUrl;
   const result: BrowserActionResult = {
     summary: "",
     diagnostics: {
@@ -970,17 +993,34 @@ export async function tabBrowser(
       url: params.url,
       label: params.label,
       tab: params.tab,
+      pinTab: true,
     },
   };
 
   if (params.action === "list") {
     const parsed = await runAgentBrowserJSON(pi, args, ctx, 30_000, { port: state.port });
     const tabs = normalizeTabList(parsed);
-    result.summary = `Listed ${tabs.length} tab${tabs.length === 1 ? "" : "s"}.`;
+    const active = tabs.find((tab) => tab.active === true);
+    state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
+    if (state.targetId) {
+      state.tabGoneTargetId = undefined;
+      state.tabGoneLastUrl = undefined;
+    } else if (previousTargetId) {
+      state.tabGoneTargetId ??= previousTargetId;
+      state.tabGoneLastUrl ??= sanitizeTabRecoveryUrl(previousUrl);
+      state.currentUrl = undefined;
+      state.currentDomain = undefined;
+    }
+    result.summary = state.targetId
+      ? `Listed ${tabs.length} tab${tabs.length === 1 ? "" : "s"}.`
+      : `Listed ${tabs.length} tab${tabs.length === 1 ? "" : "s"}; no tab is bound. Create or switch one to recover.`;
     result.contentText = formatTabTable(tabs);
     (result.diagnostics as Record<string, unknown>).tabs = tabs;
+    (result.diagnostics as Record<string, unknown>).targetId = state.targetId;
+    (result.diagnostics as Record<string, unknown>).tabBinding = state.targetId ? "pinned" : "gone";
     state.lastAction = args.join(" ");
     state.connected = true;
+    state.lastVerifiedAt = Date.now();
     state.lastError = undefined;
     return result;
   }
@@ -988,9 +1028,26 @@ export async function tabBrowser(
   if (params.action === "new" || params.action === "switch") {
     await clearControlledTab(pi, state, ctx);
   }
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  // Keep tab command results structured: 0.34 includes the durable targetId, and close can
+  // intentionally leave a strict session in tab_gone instead of selecting the next tab.
+  const commandResult = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
+  const tabs = await refreshActiveTarget(pi, state, ctx);
+
+  if (state.targetId) {
+    await refreshCurrentUrl(pi, state, ctx);
+    await markControlledTab(pi, state, ctx);
+  } else {
+    // Closing the bound/current tab is a successful mutation under strict pinning. Do not
+    // turn it into a failed tool call by probing the now-intentionally-unbound page.
+    const closedTargetId = isPlainObject(commandResult) && typeof commandResult.targetId === "string"
+      ? commandResult.targetId
+      : previousTargetId;
+    state.tabGoneTargetId = closedTargetId;
+    state.tabGoneLastUrl = sanitizeTabRecoveryUrl(previousUrl);
+    state.currentUrl = undefined;
+    state.currentDomain = undefined;
+    state.lastVerifiedAt = Date.now();
+  }
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -998,11 +1055,17 @@ export async function tabBrowser(
 
   const verb =
     params.action === "new"
-      ? `Opened new tab${params.label ? ` '${params.label}'` : ""}${params.url ? ` ${params.url}` : ""}.`
+      ? `Opened new pinned tab${params.label ? ` '${params.label}'` : ""}${params.url ? ` ${params.url}` : ""}.`
       : params.action === "close"
-        ? params.tab !== undefined ? `Closed tab ${params.tab}.` : "Closed current tab."
-        : `Switched to tab ${params.tab}.`;
+        ? state.targetId
+          ? params.tab !== undefined ? `Closed tab ${params.tab}.` : "Closed current tab."
+          : `Closed ${params.tab !== undefined ? `tab ${params.tab}` : "the current tab"}; the session remains pinned and awaits explicit recovery.`
+        : `Switched and re-pinned to tab ${params.tab}.`;
   result.summary = verb;
+  (result.diagnostics as Record<string, unknown>).commandResult = commandResult;
+  (result.diagnostics as Record<string, unknown>).tabs = tabs;
+  (result.diagnostics as Record<string, unknown>).targetId = state.targetId;
+  (result.diagnostics as Record<string, unknown>).tabBinding = state.targetId ? "pinned" : "gone";
   (result.diagnostics as Record<string, unknown>).currentUrl = state.currentUrl;
   (result.diagnostics as Record<string, unknown>).currentDomain = state.currentDomain;
   return result;
@@ -1204,6 +1267,9 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
   state.connected = false;
   state.currentUrl = undefined;
   state.currentDomain = undefined;
+  state.targetId = undefined;
+  state.tabGoneTargetId = undefined;
+  state.tabGoneLastUrl = undefined;
   state.dashboardUrl = undefined;
   state.recording = undefined;
   state.tracing = undefined;
@@ -1395,12 +1461,18 @@ export async function verifyConnection(
   ctx: ExtensionContext,
 ): Promise<ConnectionProbe> {
   const agentBrowser = await probeAgentBrowserVersion(pi, state, ctx);
+  const agentBrowserSession = agentBrowserSessionName(ctx.sessionManager.getSessionId());
   const portListening = await isPortListening(pi, state.port, ctx);
   if (!portListening) {
     state.connected = false;
     return {
       portListening: false,
       pageTargets: 0,
+      agentBrowserSession,
+      pinTab: true,
+      tabBinding: tabBindingStatus(state),
+      targetId: state.targetId ?? state.tabGoneTargetId,
+      lastUrl: state.tabGoneLastUrl,
       agentBrowserVersion: agentBrowser.installed,
       agentBrowserCompatible: agentBrowser.compatible,
       requiredAgentBrowserVersion: agentBrowser.required,
@@ -1414,18 +1486,61 @@ export async function verifyConnection(
   const attached = pages.find((t) => Boolean(t.url) && t.url !== "about:blank") ?? pages[0];
   const browser = await fetchBrowserVersion(pi, state.port, ctx);
 
-  state.connected = true;
-  state.lastVerifiedAt = Date.now();
+  // Only touch agent-browser when state proves this Pi session has previously established a
+  // binding. This actively restores/checks known bindings without making browser_status on a
+  // brand-new session create a tab as a side effect.
+  const bindingError = agentBrowser.compatible && (state.targetId || state.tabGoneTargetId)
+    ? await probeKnownTabBinding(pi, state, ctx)
+    : undefined;
+
+  state.connected = bindingError === undefined;
+  if (bindingError === undefined) state.lastVerifiedAt = Date.now();
 
   return {
     portListening: true,
     pageTargets: pages.length,
     attachedUrl: typeof attached?.url === "string" ? attached.url : undefined,
     browser,
+    agentBrowserSession,
+    pinTab: true,
+    tabBinding: tabBindingStatus(state, bindingError),
+    targetId: state.targetId ?? state.tabGoneTargetId,
+    lastUrl: state.tabGoneLastUrl,
+    bindingError,
     agentBrowserVersion: agentBrowser.installed,
     agentBrowserCompatible: agentBrowser.compatible,
     requiredAgentBrowserVersion: agentBrowser.required,
   };
+}
+
+async function probeKnownTabBinding(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<string | undefined> {
+  const priorTargetId = state.tabGoneTargetId ?? state.targetId;
+  const priorLastUrl = state.tabGoneLastUrl;
+
+  try {
+    await refreshActiveTarget(pi, state, ctx);
+    await refreshCurrentUrl(pi, state, ctx, false);
+    state.lastError = undefined;
+    return undefined;
+  } catch (error) {
+    if (error instanceof CdpError && error.kind === "tab-gone") {
+      state.targetId = undefined;
+      state.tabGoneTargetId = error.targetId ?? priorTargetId;
+      state.tabGoneLastUrl = error.lastUrl ?? priorLastUrl;
+      state.currentUrl = undefined;
+      state.currentDomain = undefined;
+      return undefined;
+    }
+
+    if (!state.targetId && !state.tabGoneTargetId) state.targetId = priorTargetId;
+    const message = error instanceof Error ? error.message : String(error);
+    state.lastError = `Pinned tab probe failed: ${message}`;
+    return message;
+  }
 }
 
 async function refreshCurrentUrl(
@@ -1438,9 +1553,24 @@ async function refreshCurrentUrl(
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
+  state.tabGoneTargetId = undefined;
+  state.tabGoneLastUrl = undefined;
   // Reached only after the action's main (non-allowFailure) call already succeeded, so the
   // browser just proved it's alive — record that for the staleness signal.
   state.lastVerifiedAt = Date.now();
+}
+
+/** Read the session's active durable CDP target after connect or a tab mutation. */
+async function refreshActiveTarget(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+): Promise<Array<Record<string, unknown>>> {
+  const parsed = await runAgentBrowserJSON(pi, ["tab", "list"], ctx, 30_000, { port: state.port });
+  const tabs = normalizeTabList(parsed);
+  const active = tabs.find((tab) => tab.active === true);
+  state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
+  return tabs;
 }
 
 async function refreshDashboardUrl(
@@ -1491,23 +1621,32 @@ async function runAgentBrowser(
   // cosmetic miss must not become a hard failure.
   if (options.allowFailure) return "";
 
-  let kind = classifyCdpError(combineStreams(result));
+  let failureText = combineStreams(result);
+  let kind = classifyCdpError(failureText);
 
-  // Self-heal once: a vanished page target is usually recoverable by re-creating one and
-  // letting agent-browser re-attach on retry. Scoped to target-gone (and only when we know
-  // the port) so element/selector errors and a genuinely-down browser still fail fast.
+  // Self-heal once: a transient vanished page target is usually recoverable by re-creating
+  // one and letting agent-browser re-attach on retry. A strict `tab_gone` stop is deliberately
+  // excluded: silently creating/adopting a tab would defeat 0.34's session isolation.
   if (kind === "target-gone" && options.port !== undefined) {
     const healed = await tryEnsureTarget(pi, options.port, ctx);
     if (healed) {
       result = await exec();
       if (result.code === 0) return joinAgentBrowserOutput(result);
-      kind = classifyCdpError(combineStreams(result));
+      failureText = combineStreams(result);
+      kind = classifyCdpError(failureText);
     }
   }
 
+  const tabGone = kind === "tab-gone" ? extractTabGoneDetails(failureText) : {};
   throw new CdpError(
-    friendlyCdpMessage(kind, options.port, formatExecFailure("agent-browser", fullArgs, result)),
+    friendlyCdpMessage(
+      kind,
+      options.port,
+      formatExecFailure("agent-browser", fullArgs, result),
+      tabGone,
+    ),
     kind,
+    tabGone,
   );
 }
 

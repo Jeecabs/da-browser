@@ -30,7 +30,12 @@ import {
 } from "../src/agent-browser-output.ts";
 import { summarizeToolText } from "../src/compact-tool-renderer.ts";
 import { prepareCompatArguments } from "../src/extension-utils.ts";
-import { classifyCdpError } from "../src/cdp-errors.ts";
+import {
+  classifyCdpError,
+  extractTabGoneDetails,
+  friendlyCdpMessage,
+  sanitizeTabRecoveryUrl,
+} from "../src/cdp-errors.ts";
 import {
   controlledTabLabel,
   controlledTabMarkScript,
@@ -45,6 +50,7 @@ import {
   normalizeRef,
   resolveBrowserPort,
   serializeBrowserState,
+  tabBindingStatus,
 } from "../src/state.ts";
 
 test("agent-browser version checks accept the minimum and newer releases", () => {
@@ -53,9 +59,9 @@ test("agent-browser version checks accept the minimum and newer releases", () =>
   assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
 
   assert.equal(supportsAgentBrowserVersion("0.31.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.33.0"), false);
-  assert.equal(supportsAgentBrowserVersion("0.33.1-beta.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.33.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.33.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.33.2"), false);
+  assert.equal(supportsAgentBrowserVersion("0.34.0-beta.1"), false);
   assert.equal(supportsAgentBrowserVersion("0.34.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
@@ -72,6 +78,7 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
   assert.match(args[3] ?? "", /^pi-[a-f0-9]{16}$/);
   assert.ok((args[3]?.length ?? Infinity) <= 19, "session name must leave room for the macOS socket path");
   assert.deepEqual(args.slice(4), [
+    "--pin-tab",
     "--allowed-domains",
     "",
     "--cdp",
@@ -93,6 +100,10 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
   assert.throws(
     () => buildCdpInvocationArgs(["read", "--allowed-domains", "example.com"], 9222, "test"),
     /CDP-backed browser tools cannot use allowedDomains/,
+  );
+  assert.throws(
+    () => buildCdpInvocationArgs(["--no-pin-tab", "get", "url"], 9222, "test"),
+    /da-browser manages --no-pin-tab/,
   );
 });
 
@@ -292,6 +303,7 @@ test("normalizeTabRef coerces bare integers to stable t-ids", () => {
   assert.equal(normalizeTabRef("2"), "t2");
   assert.equal(normalizeTabRef(" t2 "), "t2");
   assert.equal(normalizeTabRef("docs"), "docs");
+  assert.equal(normalizeTabRef("4A0B7C4E1F2D3A4B5C6D7E8F90A1B2C3"), "4A0B7C4E1F2D3A4B5C6D7E8F90A1B2C3");
 });
 
 
@@ -452,15 +464,15 @@ test("extractGetResult and extractBooleanResult read named data fields", () => {
 test("normalizeTabList and formatTabTable surface stable ids and labels", () => {
   const tabs = normalizeTabList({
     tabs: [
-      { tabId: "t2", label: null, active: true, title: "Home", url: "https://x.dev", type: "page" },
-      { tabId: "t3", label: "docs", active: false, title: "Docs", url: "https://x.dev/docs", type: "page" },
+      { tabId: "t2", targetId: "TARGET-A", label: null, active: true, title: "Home", url: "https://x.dev", type: "page" },
+      { tabId: "t3", targetId: "TARGET-B", label: "docs", active: false, title: "Docs", url: "https://x.dev/docs", type: "page" },
     ],
   });
   assert.equal(tabs.length, 2);
 
   const table = formatTabTable(tabs);
-  assert.match(table, /t2 \*/);
-  assert.match(table, /t3 {3}\[docs\] Docs/);
+  assert.match(table, /t2 \* target=/);
+  assert.match(table, /t3 {3}target=.*\[docs\] Docs/);
   assert.equal(formatTabTable([]), "(no tabs)");
 
   assert.deepEqual(normalizeTabList({ unexpected: true }), []);
@@ -567,6 +579,7 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
       agentBrowserCompatible: true,
       currentUrl: "https://linear.app/foo",
       currentDomain: "linear.app",
+      targetId: "TARGET-A",
       dashboardUrl: "http://localhost:4848",
       lastAction: "open",
       recording: { file: "/tmp/rec.webm", startedAt: 1700000000000 },
@@ -585,6 +598,9 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
     agentBrowserCompatible: true,
     currentUrl: "https://linear.app/foo",
     currentDomain: "linear.app",
+    targetId: "TARGET-A",
+    tabGoneTargetId: undefined,
+    tabGoneLastUrl: undefined,
     dashboardUrl: "http://localhost:4848",
     lastAction: "open",
     lastSnapshotAt: undefined,
@@ -599,17 +615,37 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
   });
 
   assert.match(browserWidgetLines(restored).join("\n"), /rec trace har/);
-  assert.match(
-    browserSummaryWithVersion(restored, {
-      portListening: true,
-      pageTargets: 2,
-      browser: "Chrome/150",
-      agentBrowserVersion: "0.33.1",
-      agentBrowserCompatible: true,
-      requiredAgentBrowserVersion: "0.33.1",
-    }),
-    /cli\s+agent-browser 0\.33\.1\s+ok/,
-  );
+  const status = browserSummaryWithVersion(restored, {
+    portListening: true,
+    pageTargets: 2,
+    browser: "Chrome/150",
+    agentBrowserSession: "pi-0123456789abcdef",
+    pinTab: true,
+    tabBinding: "pinned",
+    targetId: "TARGET-A",
+    agentBrowserVersion: "0.34.0",
+    agentBrowserCompatible: true,
+    requiredAgentBrowserVersion: "0.34.0",
+  });
+  assert.match(status, /cli\s+agent-browser 0\.34\.0\s+ok/);
+  assert.match(status, /session\s+pi-0123456789abcdef/);
+  assert.match(status, /binding\s+pinned/);
+  assert.match(status, /target\s+TARGET-A/);
+
+  const bindingErrorStatus = browserSummaryWithVersion(restored, {
+    portListening: true,
+    pageTargets: 2,
+    agentBrowserSession: "pi-0123456789abcdef",
+    pinTab: true,
+    tabBinding: "error",
+    targetId: "TARGET-A",
+    bindingError: "",
+    agentBrowserVersion: "0.34.0",
+    agentBrowserCompatible: true,
+    requiredAgentBrowserVersion: "0.34.0",
+  });
+  assert.match(bindingErrorStatus, /binding\s+error/);
+  assert.ok(bindingErrorStatus.split("\n").some((line) => line.startsWith("  bind err")));
 });
 
 
@@ -621,6 +657,7 @@ test("classifyCdpError maps CDP failures to recovery kinds", () => {
     "browser-down",
   );
   assert.equal(classifyCdpError("net::ERR_CONNECTION_REFUSED"), "browser-down");
+  assert.equal(classifyCdpError("tab_gone: bound tab is gone (target ABC)"), "tab-gone");
   assert.equal(classifyCdpError("Error: Target closed"), "target-gone");
   assert.equal(classifyCdpError("No page target found"), "target-gone");
   assert.equal(classifyCdpError("Protocol error: No target with given id found"), "target-gone");
@@ -629,6 +666,43 @@ test("classifyCdpError maps CDP failures to recovery kinds", () => {
   // Action-level errors must NOT be classified as connection failures (no false retry).
   assert.equal(classifyCdpError("Element not found: @e5"), "unknown");
   assert.equal(classifyCdpError(""), "unknown");
+});
+
+
+test("tab_gone recovery metadata parses documented single, batch, and text shapes", () => {
+  assert.deepEqual(
+    extractTabGoneDetails(JSON.stringify({
+      success: false,
+      code: "tab_gone",
+      data: { targetId: "TARGET-A", lastUrl: "https://user:secret@example.com/private?token=abc#fragment" },
+      error: "tab_gone: bound tab is gone",
+    })),
+    { targetId: "TARGET-A", lastUrl: "https://example.com/private" },
+  );
+  assert.equal(sanitizeTabRecoveryUrl("https://user:secret@example.com/path?token=abc#fragment"), "https://example.com/path");
+  assert.equal(sanitizeTabRecoveryUrl("about:blank"), "about:blank");
+  assert.equal(sanitizeTabRecoveryUrl("data:text/html,secret"), undefined);
+
+  assert.deepEqual(
+    extractTabGoneDetails(JSON.stringify([
+      { command: "get url", success: false, code: "tab_gone", result: { targetId: "TARGET-B" } },
+    ])),
+    { targetId: "TARGET-B", lastUrl: undefined },
+  );
+  assert.deepEqual(
+    extractTabGoneDetails(
+      "✗ tab_gone: bound tab is gone (target TARGET-C, last url https://example.com/safe). Run `agent-browser tab new`",
+    ),
+    { targetId: "TARGET-C", lastUrl: "https://example.com/safe" },
+  );
+
+  const message = friendlyCdpMessage("tab-gone", 9222, "raw", {
+    targetId: "TARGET-A",
+    lastUrl: "https://example.com/safe",
+  });
+  assert.match(message, /Strict tab isolation prevented/);
+  assert.match(message, /TARGET-A/);
+  assert.match(message, /browser_tab action='new'/);
 });
 
 
@@ -652,12 +726,20 @@ test("controlled-tab overlay builds safe, valid inject scripts", () => {
 });
 
 
-test("connectionHealth reflects liveness honestly", () => {
+test("connectionHealth and binding status reflect degraded probes honestly", () => {
   const base = createBrowserState("/tmp/proj", 9222, 4848);
+  assert.equal(tabBindingStatus({ ...base, targetId: "TARGET-A" }), "pinned");
+  assert.equal(tabBindingStatus({ ...base, tabGoneTargetId: "TARGET-A" }), "gone");
+  assert.equal(tabBindingStatus({ ...base, targetId: "TARGET-A" }, ""), "error");
+  assert.equal(tabBindingStatus(base), "unknown");
   const now = 1_700_000_000_000;
 
   assert.equal(connectionHealth({ ...base, connected: false }, now), "down");
   assert.equal(connectionHealth({ ...base, connected: true, lastVerifiedAt: now }, now + 1_000), "ok");
+  assert.equal(
+    connectionHealth({ ...base, connected: true, tabGoneTargetId: "TARGET-A", lastVerifiedAt: now }, now + 1_000),
+    "suspect",
+  );
   // Connected but not confirmed for > 5 min → suspect (◐ stale), not a confident ●.
   assert.equal(connectionHealth({ ...base, connected: true, lastVerifiedAt: now }, now + 6 * 60_000), "suspect");
   // Connected with no verification timestamp yet → no staleness evidence, treat as ok.

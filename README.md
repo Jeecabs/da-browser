@@ -42,7 +42,7 @@ Reload pi if already running:
 
 ## Runtime prerequisites
 
-- `agent-browser` 0.33.1 or newer on `PATH`
+- `agent-browser` 0.34.0 or newer on `PATH`
 - Arc/Chromium launched with a remote debugging port, default `9222`
 
 Install or upgrade the CLI:
@@ -77,8 +77,8 @@ Override defaults:
 
 | Tool | Description |
 | --- | --- |
-| `browser_status` | Probe live debugging port and artifact locations |
-| `browser_connect` | Connect to browser auth context |
+| `browser_status` | Probe live CDP state plus strict session/target binding diagnostics |
+| `browser_connect` | Connect a strictly tab-pinned session to the browser auth context |
 | `browser_open` | Navigate to a URL |
 | `browser_snapshot` | Capture page accessibility snapshot |
 | `browser_read` | Fetch markdown/llms-aware text, or read active tab |
@@ -95,7 +95,7 @@ Override defaults:
 | `browser_har` | Capture network traffic and response bodies as HAR |
 | `browser_command` | Run raw `agent-browser` args with active CDP port |
 | `browser_eval` | Evaluate JS in page context |
-| `browser_tab` | List/open/close/switch tabs |
+| `browser_tab` | List/open/close/switch tabs by id, label, or durable CDP targetId |
 | `browser_is` | Boolean visible/enabled/checked assertions |
 | `browser_set` | Configure viewport/device/geo/offline/media/headers/credentials |
 | `browser_record` | Start/stop WebM recording |
@@ -111,14 +111,16 @@ Override defaults:
 pnpm install
 pnpm check
 pnpm test
+pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pinning
 ```
 
 ## Notes
 
 - Browser refs (`@e12`) come from the latest snapshot and go stale after DOM mutations.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
-- `/browser status` and `browser_status` actively probe the port. Trust them over cached state.
-- CDP actions use a dedicated daemon session and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
-- If the controlled tab disappears, commands recreate a page target and retry once.
+- `/browser status` and `browser_status` actively probe the port and any previously known pinned binding. They report the daemon session, binding state, durable targetId, and sanitized tab-gone URL when available.
+- CDP actions use a dedicated, Pi-session-derived daemon session, enable agent-browser 0.34 strict `--pin-tab`, and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
+- The controlled tab binding survives daemon restarts. Other Pi sessions and user-opened tabs cannot steal the active target.
+- If the pinned tab disappears, commands fail safely with `tab_gone` and retain its `targetId` plus sanitized last URL when available. Recover with `browser_tab` new/switch, or use `browser_connect` as an explicit request for a fresh controlled tab. Only transient non-pin target failures retry automatically.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

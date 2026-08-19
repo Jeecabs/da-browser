@@ -99,18 +99,20 @@ export function normalizeTabList(parsed: unknown): Array<Record<string, unknown>
   return [];
 }
 
-// Tabs carry stable string ids (t1, t2, …) and optional user labels; both are what later
-// `tab` commands accept, so the table leads with them rather than positional numbers.
+// Tabs carry per-daemon ids (t1, t2, …), optional user labels, and CDP target ids. Since
+// agent-browser 0.34 target ids are accepted as tab refs and remain stable across daemon
+// restarts, surface them rather than hiding the only durable cross-restart handle.
 export function formatTabTable(tabs: Array<Record<string, unknown>>): string {
   if (tabs.length === 0) return "(no tabs)";
   return tabs
     .map((tab) => {
       const id = typeof tab.tabId === "string" ? tab.tabId : "?";
       const active = tab.active ? "*" : " ";
+      const targetId = typeof tab.targetId === "string" && tab.targetId ? ` target=${tab.targetId}` : "";
       const label = typeof tab.label === "string" && tab.label ? ` [${tab.label}]` : "";
       const title = typeof tab.title === "string" && tab.title ? ` ${tab.title}` : "";
       const url = typeof tab.url === "string" && tab.url ? `  ${tab.url}` : "";
-      return `${id.padStart(3)} ${active}${label}${title}${url}`;
+      return `${id.padStart(3)} ${active}${targetId}${label}${title}${url}`;
     })
     .join("\n");
 }

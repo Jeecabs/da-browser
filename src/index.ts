@@ -121,7 +121,8 @@ const BROWSER_GUIDELINES = [
   "For heavy SPAs, scope browser_snapshot with selector (CSS subtree) or depth to keep context small. interactiveOnly already filters non-interactive nodes by default; includeUrls adds link hrefs without extra browser_get calls.",
   "Use browser_read for docs/articles/text pages: pass a URL for markdown/llms.txt-aware fetching without browser_connect, or omit url to read the rendered active tab with auth/client state.",
   "After browser_open, browser_nav, or any submission, the page is mid-load. Rely on waitMode='networkidle' (default) or follow up with browser_wait — prefer its text/urlPattern/load/fn modes over raw millisecond waits.",
-  "Tabs use stable string ids (t1, t2, …) plus optional labels — never positional integers. Get ids from browser_tab list; label tabs at creation for multi-tab flows.",
+  "Every Pi session uses a named agent-browser daemon with strict tab pinning, so concurrent sessions sharing Chrome cannot hijack one another's tabs. If a pinned tab is closed, da-browser fails safely instead of adopting a neighbor.",
+  "Tabs use per-daemon ids (t1, t2, …), optional labels, and durable CDP targetIds — never positional integers. Get refs from browser_tab list; use targetId when a handle must survive a daemon restart.",
   "Use browser_checkpoint after important mutations to save a screenshot + interactive snapshot pair for verification and recovery; annotate=true adds numbered labels keyed to @eN refs for vision use.",
   "The connected browser is the user's authenticated Arc session — do not perform mutations the user did not ask for.",
   "browser_record start spawns a fresh browser context (cookies and localStorage preserved); re-snapshot before the next action.",
@@ -129,7 +130,7 @@ const BROWSER_GUIDELINES = [
   "For React/Next.js debugging: browser_open with enableReactDevtools=true, then browser_react (tree/inspect/renders/suspense). browser_vitals and browser_nav pushstate work on any page without the hook.",
   "Use browser_a11y for embedded axe-core WCAG audits; incomplete checks still need manual review.",
   "HAR files can contain cookies, authorization headers, and response bodies. Keep browser_har captures temporary and avoid sharing them without inspection.",
-  "On a connection error: a lost tab is auto-retried once; if it still fails the browser is likely down — call browser_connect to re-establish the controlled tab, then retry. browser_status actively probes the port, so trust it over assumptions about connection state.",
+  "On tab_gone, strict isolation worked: recover explicitly with browser_tab new, browser_tab list then switch by targetId, or browser_connect to create a fresh controlled tab. Only transient non-pin target failures are auto-retried. browser_status actively probes the port, so trust it over assumptions about connection state.",
   "alert/beforeunload dialogs are auto-accepted by agent-browser; for confirm/prompt dialogs use browser_command ['dialog','accept'] or ['dialog','dismiss'].",
 ];
 
@@ -143,7 +144,9 @@ export default function (pi: ExtensionAPI) {
     const versionMismatch = state.agentBrowserCompatible === false;
     const color = versionMismatch ? "warning" : health === "ok" ? "success" : health === "suspect" ? "warning" : "dim";
     const dot = t.fg(color, connectionGlyph(health));
-    const browserLabel = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
+    const browserLabel = state.tabGoneTargetId
+      ? "pinned tab gone"
+      : state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
     const label = versionMismatch ? `agent-browser ${state.agentBrowserVersion ?? "missing"}` : browserLabel;
     ctx.ui.setStatus("browser-ops", `${dot} ${t.fg("muted", label)}`);
   };
@@ -160,9 +163,16 @@ export default function (pi: ExtensionAPI) {
   const handleFailure = (ctx: ExtensionContext, error: unknown): never => {
     const message = error instanceof Error ? error.message : String(error);
     state.lastError = message;
-    // A connection-level failure means the dot should stop claiming we're connected.
-    // Action-level errors (bad selector, element not found) leave connected alone.
-    if (error instanceof CdpError && (error.kind === "browser-down" || error.kind === "target-gone")) {
+    // A strict pin failure means Chrome is still connected but no page is bound. Preserve
+    // the recovery identifiers and show a warning state instead of claiming browser-down.
+    if (error instanceof CdpError && error.kind === "tab-gone") {
+      state.connected = true;
+      state.targetId = undefined;
+      state.tabGoneTargetId = error.targetId ?? state.tabGoneTargetId;
+      state.tabGoneLastUrl = error.lastUrl ?? state.tabGoneLastUrl;
+      state.currentUrl = undefined;
+      state.currentDomain = undefined;
+    } else if (error instanceof CdpError && (error.kind === "browser-down" || error.kind === "target-gone")) {
       state.connected = false;
     }
     refreshUi(ctx);
@@ -268,7 +278,7 @@ export default function (pi: ExtensionAPI) {
   registerBrowserTool({
     name: "browser_status",
     label: "Browser Status",
-    description: "Probe agent-browser version compatibility, the live debugging port, page targets, browser version, and artifact locations",
+    description: "Probe agent-browser compatibility, live CDP state, and the known strict session-to-tab binding (session, targetId, tab_gone metadata)",
     promptSnippet: "Inspect the browser automation state before continuing a multi-step dashboard task",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({}),
@@ -288,7 +298,7 @@ export default function (pi: ExtensionAPI) {
   registerBrowserTool({
     name: "browser_connect",
     label: "Browser Connect",
-    description: "Connect agent-browser to Arc or Chromium auth context using a smart-default remote debugging port",
+    description: "Connect a strictly tab-pinned agent-browser session to Arc or Chromium using a smart-default remote debugging port",
     promptSnippet: "Connect browser automation to the user's existing authenticated browser session",
     promptGuidelines: [
       ...BROWSER_GUIDELINES,
@@ -880,7 +890,7 @@ export default function (pi: ExtensionAPI) {
     name: "browser_tab",
     label: "Browser Tab",
     description:
-      "List, open, close, or switch browser tabs. Tabs have stable string ids (t1, t2, …) and optional labels — get them from list; positional integers are not accepted.",
+      "List, open, close, or switch browser tabs. Use per-daemon ids (t1, t2, …), labels, or durable CDP targetIds from list; positional integers are not accepted.",
     promptSnippet: "Manage browser tabs when an action opens a popup or you need to coordinate across tabs",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
@@ -888,7 +898,7 @@ export default function (pi: ExtensionAPI) {
       url: Type.Optional(Type.String({ description: "URL to open when action is 'new'" })),
       label: Type.Optional(Type.String({ description: "Memorable label for the new tab (action 'new'), e.g. docs" })),
       tab: Type.Optional(
-        Type.String({ description: "Stable tab id like t2 (or a label) for 'switch' (required) and 'close' (optional)" }),
+        Type.String({ description: "Tab id like t2, label, or durable CDP targetId for 'switch' (required) and 'close' (optional)" }),
       ),
     }),
     prepareArguments(args) {

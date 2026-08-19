@@ -1,4 +1,4 @@
-export const MIN_AGENT_BROWSER_VERSION = "0.33.1";
+export const MIN_AGENT_BROWSER_VERSION = "0.34.0";
 
 interface ParsedVersion {
   major: number;

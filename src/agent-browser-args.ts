@@ -2,6 +2,23 @@ import { createHash } from "node:crypto";
 
 const DA_BROWSER_NAMESPACE = "da-browser";
 
+export const INPUT_MODES = ["instant", "smooth", "human"] as const;
+export type InputMode = (typeof INPUT_MODES)[number];
+
+/**
+ * Session-wide pointer movement (agent-browser 0.38 `--input-mode`). `instant` is the CLI
+ * default and stays implicit; `smooth`/`human` make recordings read as real cursor motion
+ * and defeat naive "no mousemove" bot checks.
+ */
+export function resolveInputMode(env: Record<string, string | undefined> = process.env): InputMode | undefined {
+  const raw = env.DA_BROWSER_INPUT_MODE?.trim().toLowerCase();
+  if (!raw || raw === "instant") return undefined;
+  if (!(INPUT_MODES as readonly string[]).includes(raw)) {
+    throw new Error(`DA_BROWSER_INPUT_MODE must be one of ${INPUT_MODES.join(", ")} (got ${raw}).`);
+  }
+  return raw as InputMode;
+}
+
 export function agentBrowserSessionName(piSessionId: string): string {
   const source = piSessionId.trim() || "session";
   // agent-browser puts namespace + session in a Unix socket path. A raw Pi UUID can exceed
@@ -33,7 +50,7 @@ export function buildCdpInvocationArgs(
     );
   }
   const managedFlag = commandArgs.find((arg) =>
-    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab"].some(
+    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab", "--input-mode"].some(
       (flag) => arg === flag || arg.startsWith(`${flag}=`),
     ),
   );
@@ -41,12 +58,15 @@ export function buildCdpInvocationArgs(
     throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
   }
 
+  const inputMode = resolveInputMode();
+
   return [
     "--namespace",
     DA_BROWSER_NAMESPACE,
     "--session",
     agentBrowserSessionName(piSessionId),
     "--pin-tab",
+    ...(inputMode ? ["--input-mode", inputMode] : []),
     "--allowed-domains",
     "",
     "--cdp",
@@ -62,15 +82,56 @@ export interface SnapshotArgsOptions {
   compact?: boolean;
   depth?: number;
   selector?: string;
+  /** Return compact structural changes since the last snapshot with the same options (`--delta`). */
+  delta?: boolean;
+  /** Force a full tree and refresh the delta baseline (`--full`). */
+  full?: boolean;
 }
 
 export function buildSnapshotArgs(opts: SnapshotArgsOptions): string[] {
+  if (opts.full && !opts.delta) {
+    throw new Error("browser_snapshot full only applies with delta=true; a plain snapshot is already full.");
+  }
   const args = ["snapshot"];
   if (opts.interactiveOnly) args.push("-i");
   if (opts.urls) args.push("-u");
   if (opts.compact) args.push("-c");
   if (opts.depth != null) args.push("-d", String(opts.depth));
   if (opts.selector) args.push("-s", opts.selector);
+  // Delta history is keyed by tab + option set, so these go last and stay stable per caller.
+  if (opts.delta) args.push("--delta");
+  if (opts.full) args.push("--full");
+  return args;
+}
+
+/**
+ * da-browser paints an animated 2px hairline across the top of the controlled tab, so two
+ * captures of an idle page are never pixel-identical and a bare `--if-changed` would always
+ * report a change. A full-width 2px band is well under 1% of any real viewport, so this is
+ * the floor a conditional capture uses unless the caller sets its own threshold.
+ */
+export const CONTROL_MARKER_PIXEL_THRESHOLD = 0.01;
+
+export interface ScreenshotArgsOptions {
+  file: string;
+  /** Overlay numbered ref labels ([N] matches @eN) and print the legend. */
+  annotate?: boolean;
+  /** Skip writing an unchanged capture (`--if-changed`), saving vision tokens on repeats. */
+  ifChanged?: boolean;
+  /** Pixel-change ratio below which a capture counts as unchanged; implies ifChanged. */
+  threshold?: number;
+}
+
+export function buildScreenshotArgs(opts: ScreenshotArgsOptions): string[] {
+  if (opts.threshold !== undefined && (opts.threshold < 0 || opts.threshold > 1)) {
+    throw new Error(`Screenshot threshold must be between 0 and 1 (got ${opts.threshold}).`);
+  }
+  const args = ["screenshot"];
+  if (opts.annotate) args.push("--annotate");
+  const threshold = opts.threshold ?? (opts.ifChanged ? CONTROL_MARKER_PIXEL_THRESHOLD : undefined);
+  // --threshold implies --if-changed, so the two flags are never both needed.
+  if (threshold !== undefined) args.push("--threshold", String(threshold));
+  args.push(opts.file, "--json");
   return args;
 }
 
@@ -141,6 +202,8 @@ export type FindAction = (typeof FIND_ACTIONS)[number];
 const FIND_ACTIONS_WITH_TEXT = new Set<FindAction>(["fill", "type"]);
 // Actions that change page state and therefore invalidate snapshot refs.
 export const MUTATING_FIND_ACTIONS = new Set<FindAction>(["click", "fill", "type", "check", "uncheck"]);
+// Actions agent-browser drives through the pointer, so `--human` movement applies.
+const POINTER_FIND_ACTIONS = new Set<FindAction>(["click", "hover", "check", "uncheck"]);
 
 export interface FindArgsOptions {
   locator: string;
@@ -155,6 +218,8 @@ export interface FindArgsOptions {
   text?: string;
   name?: string;
   exact?: boolean;
+  /** Approach the element along a curved, eased pointer path (click-like actions only). */
+  human?: boolean;
 }
 
 export function buildFindArgs(params: FindArgsOptions): string[] {
@@ -179,6 +244,12 @@ export function buildFindArgs(params: FindArgsOptions): string[] {
   if (params.text !== undefined) args.push(params.text);
   if (params.name) args.push("--name", params.name);
   if (params.exact) args.push("--exact");
+  if (params.human) {
+    if (!POINTER_FIND_ACTIONS.has(params.action)) {
+      throw new Error(`browser_find human only applies to pointer actions (${[...POINTER_FIND_ACTIONS].join(", ")}).`);
+    }
+    args.push("--human");
+  }
   return args;
 }
 
@@ -455,12 +526,46 @@ export interface CaptureArgsOptions {
   file?: string;
 }
 
-export function buildRecordArgs(params: CaptureArgsOptions): string[] {
-  const args = ["record", params.action];
-  if (params.action === "start" && params.file) args.push(params.file);
-  if (params.action === "stop" && params.file !== undefined) {
-    throw new Error("browser_record stop does not accept a file path.");
+export type RecordAction = CaptureAction | "restart";
+
+export interface RecordArgsOptions {
+  action: RecordAction;
+  file?: string;
+  /** Capture rate, 1-60. agent-browser defaults to 30. */
+  fps?: number;
+  /** Render an animated pointer and click ripple into the video. */
+  cursor?: boolean;
+  /** Also save a timestamped PNG summary next to the video. */
+  contactSheet?: boolean;
+  /** Pixel-change ratio that selects a contact-sheet frame (0-1); implies contactSheet. */
+  contactSheetThreshold?: number;
+}
+
+/** agent-browser writes the contact sheet beside the video, replacing its extension. */
+export function contactSheetPath(videoFile: string): string {
+  return `${videoFile.replace(/\.[^./]+$/, "")}.contact-sheet.png`;
+}
+
+export function buildRecordArgs(params: RecordArgsOptions): string[] {
+  if (params.action === "stop") {
+    if (params.file !== undefined) throw new Error("browser_record stop does not accept a file path.");
+    return ["record", "stop", "--json"];
   }
+  if (!params.file) throw new Error(`browser_record ${params.action} requires an output file path.`);
+  if (params.fps !== undefined && (!Number.isInteger(params.fps) || params.fps < 1 || params.fps > 60)) {
+    throw new Error(`browser_record fps must be an integer between 1 and 60 (got ${params.fps}).`);
+  }
+  const threshold = params.contactSheetThreshold;
+  if (threshold !== undefined && (threshold < 0 || threshold > 1)) {
+    throw new Error(`browser_record contactSheetThreshold must be between 0 and 1 (got ${threshold}).`);
+  }
+
+  const args = ["record", params.action, params.file];
+  if (params.fps !== undefined) args.push("--fps", String(params.fps));
+  if (params.cursor) args.push("--cursor");
+  if (threshold !== undefined) args.push("--contact-sheet-threshold", String(threshold));
+  else if (params.contactSheet) args.push("--contact-sheet");
+  args.push("--json");
   return args;
 }
 

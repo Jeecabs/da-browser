@@ -18,11 +18,13 @@ import {
   buildReactArgs,
   buildReadArgs,
   buildRecordArgs,
+  buildScreenshotArgs,
   buildSetArgs,
   buildSnapshotArgs,
   buildTabArgs,
   buildTraceArgs,
   buildWaitArgs,
+  contactSheetPath,
   MUTATING_FIND_ACTIONS,
   type A11yArgsOptions,
   type CaptureAction,
@@ -31,7 +33,10 @@ import {
   type IsArgsOptions,
   type ReactArgsOptions,
   type ReadArgsOptions,
+  type RecordArgsOptions,
+  type ScreenshotArgsOptions,
   type SetArgsOptions,
+  type SnapshotArgsOptions,
   type TabArgsOptions,
   type WaitArgsOptions,
 } from "./agent-browser-args.js";
@@ -39,6 +44,7 @@ import {
   AgentBrowserCliError,
   extractBooleanResult,
   extractGetResult,
+  formatAnnotationLegend,
   formatGetResult,
   formatTabTable,
   isPlainObject,
@@ -78,12 +84,14 @@ export {
   buildReactArgs,
   buildReadArgs,
   buildRecordArgs,
+  buildScreenshotArgs,
   buildSetArgs,
   buildSnapshotArgs,
   buildTabArgs,
   buildTraceArgs,
   buildWaitArgs,
   CdpError,
+  contactSheetPath,
 };
 export { FIND_ACTIONS, normalizeTabRef } from "./agent-browser-args.js";
 export { unwrapCliEnvelope, AgentBrowserCliError } from "./agent-browser-output.js";
@@ -101,6 +109,9 @@ export type {
   ReactArgsOptions,
   ReactCommand,
   ReadArgsOptions,
+  RecordAction,
+  RecordArgsOptions,
+  ScreenshotArgsOptions,
   SetArgsOptions,
   SetSetting,
   SnapshotArgsOptions,
@@ -260,7 +271,7 @@ export async function snapshotBrowserPage(
   ctx: ExtensionContext,
   interactiveOnly: boolean,
   label = "snapshot",
-  options: { urls?: boolean; compact?: boolean; depth?: number; selector?: string } = {},
+  options: Omit<SnapshotArgsOptions, "interactiveOnly"> = {},
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
@@ -279,7 +290,7 @@ export async function snapshotBrowserPage(
   await refreshCurrentUrl(pi, state, ctx);
 
   return {
-    summary: `Captured ${interactiveOnly ? "interactive " : ""}snapshot.`,
+    summary: `Captured ${interactiveOnly ? "interactive " : ""}snapshot${options.delta ? " (delta)" : ""}.`,
     contentText: await truncateForTool(snapshot, snapshotFile),
     artifacts: [snapshotFile],
     diagnostics: {
@@ -288,6 +299,7 @@ export async function snapshotBrowserPage(
       compact: options.compact,
       depth: options.depth,
       selector: options.selector,
+      delta: options.delta,
       snapshotFile,
       currentUrl: state.currentUrl,
     },
@@ -355,18 +367,22 @@ export async function clickBrowserElement(
   ref: string,
   waitMode: WaitMode,
   resnapshot: boolean,
+  human = false,
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["click", `@${normalizedRef}`], ctx, 60_000, { port: state.port, local });
+  // --human moves the pointer along a curved, eased path before pressing, so hover-gated
+  // UI and pointer-path bot checks see a real approach instead of a teleport.
+  const clickArgs = human ? ["click", `@${normalizedRef}`, "--human"] : ["click", `@${normalizedRef}`];
+  await runAgentBrowser(pi, clickArgs, ctx, 60_000, { port: state.port, local });
   await waitForLoad(pi, ctx, waitMode, state.port, local);
   await refreshCurrentUrl(pi, state, ctx);
   await markControlledTab(pi, state, ctx);
 
   state.connected = true;
-  state.lastAction = `click @${normalizedRef}`;
+  state.lastAction = clickArgs.join(" ");
   state.lastError = undefined;
 
   const result: BrowserActionResult = {
@@ -812,7 +828,7 @@ export async function checkpointBrowserPage(
   state: BrowserState,
   ctx: ExtensionContext,
   label: string,
-  options: { annotate?: boolean } = {},
+  options: Omit<ScreenshotArgsOptions, "file"> & { delta?: boolean } = {},
 ): Promise<BrowserActionResult> {
   await ensureReady(pi, state, ctx);
   await ensureArtifactDir(state);
@@ -823,27 +839,32 @@ export async function checkpointBrowserPage(
   await markControlledTab(pi, state, ctx);
   // --annotate overlays numbered labels keyed to snapshot refs ([N] ↔ @eN) and prints the
   // legend on stdout, so a vision pass over the screenshot maps straight back to refs.
-  const screenshotArgs = options.annotate
-    ? ["screenshot", "--annotate", screenshotFile]
-    : ["screenshot", screenshotFile];
-  const legend = await runAgentBrowser(pi, screenshotArgs, ctx, 60_000, { port: state.port });
-  state.lastScreenshotFile = screenshotFile;
+  // --if-changed/--threshold (0.38) skip an unchanged capture: no file, no vision tokens.
+  const screenshotArgs = buildScreenshotArgs({ ...options, file: screenshotFile });
+  const shot = await runAgentBrowserJSON(pi, screenshotArgs, ctx, 60_000, { port: state.port });
+  const changed = !isPlainObject(shot) || shot.changed !== false;
+  const legend = options.annotate ? formatAnnotationLegend(shot) : "";
+  if (changed) state.lastScreenshotFile = screenshotFile;
 
-  const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `${safeLabel}-snapshot`);
+  const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `${safeLabel}-snapshot`, {
+    delta: options.delta,
+  });
   state.connected = true;
   state.lastAction = `checkpoint ${safeLabel}`;
   state.lastError = undefined;
 
-  const contentText = options.annotate
-    ? [legend, snapshot.contentText].filter(Boolean).join("\n\n")
-    : snapshot.contentText;
+  const contentText = [legend, snapshot.contentText].filter(Boolean).join("\n\n");
 
   return {
-    summary: `Saved checkpoint ${safeLabel}.`,
+    summary: changed
+      ? `Saved checkpoint ${safeLabel}.`
+      : `Checkpoint ${safeLabel}: page unchanged, screenshot skipped.`,
     contentText,
-    artifacts: [screenshotFile, ...(snapshot.artifacts ?? [])],
+    artifacts: changed ? [screenshotFile, ...(snapshot.artifacts ?? [])] : snapshot.artifacts,
     diagnostics: {
-      screenshotFile,
+      screenshotFile: changed ? screenshotFile : undefined,
+      changed,
+      pixelChangeRatio: isPlainObject(shot) ? shot.pixelChangeRatio : undefined,
       annotate: options.annotate,
       snapshotFile: state.lastSnapshotFile,
       currentUrl: state.currentUrl,
@@ -1186,13 +1207,67 @@ export async function recordBrowser(
   pi: ExtensionAPI,
   state: BrowserState,
   ctx: ExtensionContext,
-  params: { action: CaptureAction; label?: string },
+  params: Omit<RecordArgsOptions, "file"> & { label?: string; format?: "webm" | "mp4" },
 ): Promise<BrowserActionResult> {
-  return captureRecording(pi, state, ctx, params, {
-    kind: "recording",
-    extension: "webm",
-    buildArgs: buildRecordArgs,
-  });
+  await ensureReady(pi, state, ctx);
+  await ensureArtifactDir(state);
+
+  if (params.action === "stop") {
+    const previous = state.recording;
+    const stopped = await runAgentBrowserJSON(pi, buildRecordArgs({ action: "stop" }), ctx, 60_000, {
+      port: state.port,
+    });
+    state.recording = undefined;
+    state.connected = true;
+    state.lastAction = "record stop";
+    state.lastError = undefined;
+
+    const file = readString(stopped, "path") ?? previous?.file;
+    const sheet = readString(stopped, "contactSheetPath");
+    const frames = isPlainObject(stopped) ? stopped.frames : undefined;
+    return {
+      summary: file ? `Stopped recording → ${file}` : "Stopped recording.",
+      artifacts: [file, sheet].filter((entry): entry is string => Boolean(entry)),
+      diagnostics: {
+        action: "stop",
+        file,
+        contactSheetPath: sheet,
+        frames,
+        capturedFrames: isPlainObject(stopped) ? stopped.capturedFrames : undefined,
+        durationMs: previous ? Date.now() - previous.startedAt : undefined,
+      },
+    };
+  }
+
+  // .mp4 (H.264) plays inline in more viewers; .webm (VP8) stays the smaller default.
+  const file = artifactPath(state, params.label ?? "recording", params.format ?? "webm");
+  const args = buildRecordArgs({ ...params, file });
+  await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+  await markControlledTab(pi, state, ctx);
+  state.recording = { file, startedAt: Date.now() };
+  state.connected = true;
+  state.lastAction = args.join(" ");
+  state.lastError = undefined;
+  await refreshCurrentUrl(pi, state, ctx);
+
+  const sheet = params.contactSheet || params.contactSheetThreshold !== undefined ? contactSheetPath(file) : undefined;
+  return {
+    summary: `${params.action === "restart" ? "Restarted" : "Started"} recording (${params.fps ?? 30} fps${params.cursor ? ", cursor" : ""}) → ${file}`,
+    diagnostics: {
+      action: params.action,
+      file,
+      fps: params.fps ?? 30,
+      cursor: params.cursor,
+      contactSheetPath: sheet,
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+function readString(payload: unknown, key: string): string | undefined {
+  if (!isPlainObject(payload)) return undefined;
+  const value = payload[key];
+  return typeof value === "string" && value ? value : undefined;
 }
 
 export async function traceBrowser(
@@ -1214,7 +1289,7 @@ async function captureRecording(
   ctx: ExtensionContext,
   params: { action: CaptureAction; label?: string },
   options: {
-    kind: "recording" | "tracing";
+    kind: "tracing";
     extension: string;
     buildArgs: (input: { action: CaptureAction; file?: string }) => string[];
   },

@@ -91,6 +91,23 @@ export function extractBooleanResult(check: string, parsed: unknown): boolean {
   throw new Error(`browser_is expected a boolean result, got: ${JSON.stringify(parsed)}`);
 }
 
+/**
+ * `screenshot --annotate --json` returns structured `annotations` instead of the text
+ * legend the non-JSON path prints. Render them as the same [N] ↔ @eN mapping a vision
+ * pass needs, dropping the box geometry it cannot use.
+ */
+export function formatAnnotationLegend(parsed: unknown): string {
+  const annotations = isPlainObject(parsed) && Array.isArray(parsed.annotations) ? parsed.annotations : [];
+  const lines = annotations.filter(isPlainObject).map((entry) => {
+    const number = typeof entry.number === "number" ? entry.number : "?";
+    const ref = typeof entry.ref === "string" ? `@${entry.ref}` : "";
+    const role = typeof entry.role === "string" ? entry.role : "";
+    const name = typeof entry.name === "string" && entry.name ? ` "${entry.name}"` : "";
+    return `[${number}] ${[ref, role].filter(Boolean).join(" ")}${name}`;
+  });
+  return lines.length ? `Annotated refs:\n${lines.join("\n")}` : "";
+}
+
 export function normalizeTabList(parsed: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(parsed)) return parsed.filter(isPlainObject);
   if (isPlainObject(parsed) && Array.isArray(parsed.tabs)) {

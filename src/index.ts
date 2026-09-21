@@ -36,6 +36,7 @@ import {
   type A11yArgsOptions,
   type BrowserGetWhat,
   type CaptureAction,
+  type RecordAction,
   type FindAction,
   type HarContentMode,
   type IsCheck,
@@ -90,6 +91,8 @@ const BROWSER_FIND_LOCATOR_SCHEMA = StringEnum([
 ] as const);
 const BROWSER_FIND_ACTION_SCHEMA = StringEnum(["click", "fill", "type", "hover", "focus", "check", "uncheck"] as const);
 const BROWSER_TAB_ACTION_SCHEMA = StringEnum(["list", "new", "close", "switch"] as const);
+const BROWSER_RECORD_ACTION_SCHEMA = StringEnum(["start", "stop", "restart"] as const);
+const BROWSER_RECORD_FORMAT_SCHEMA = StringEnum(["webm", "mp4"] as const);
 const BROWSER_IS_CHECK_SCHEMA = StringEnum(["visible", "enabled", "checked"] as const);
 const BROWSER_SET_SETTING_SCHEMA = StringEnum([
   "viewport",
@@ -362,7 +365,8 @@ export default function (pi: ExtensionAPI) {
   registerBrowserTool({
     name: "browser_snapshot",
     label: "Browser Snapshot",
-    description: "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs.",
+    description:
+      "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs, and set delta=true when re-snapshotting the same page to get only the changes.",
     promptSnippet: "Inspect the current page and collect fresh element refs before clicking or filling",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
@@ -371,12 +375,18 @@ export default function (pi: ExtensionAPI) {
       compact: Type.Optional(Type.Boolean({ description: "Remove empty structural elements" })),
       depth: Type.Optional(Type.Number({ description: "Limit accessibility tree depth" })),
       selector: Type.Optional(Type.String({ description: "Scope snapshot to a CSS selector subtree" })),
+      delta: Type.Optional(
+        Type.Boolean({
+          description: "Return only what changed since the last snapshot with the same options (refs stay valid)",
+        }),
+      ),
+      full: Type.Optional(Type.Boolean({ description: "With delta, force a full tree and reset the baseline" })),
       label: Type.Optional(Type.String({ description: "Optional artifact label" })),
     }),
     prepareArguments(args) {
       return prepareCompatArguments(args, {
         aliases: { interactive: "interactiveOnly", urls: "includeUrls", scope: "selector", css: "selector", maxDepth: "depth" },
-        booleanFields: ["interactiveOnly", "includeUrls", "compact"],
+        booleanFields: ["interactiveOnly", "includeUrls", "compact", "delta", "full"],
         numberFields: ["depth"],
       });
     },
@@ -388,7 +398,14 @@ export default function (pi: ExtensionAPI) {
           ctx,
           params.interactiveOnly ?? true,
           params.label ?? "snapshot",
-          { urls: params.includeUrls, compact: params.compact, depth: params.depth, selector: params.selector },
+          {
+            urls: params.includeUrls,
+            compact: params.compact,
+            depth: params.depth,
+            selector: params.selector,
+            delta: params.delta,
+            full: params.full,
+          },
         );
         refreshUi(ctx);
         return toolResponse(result);
@@ -458,6 +475,9 @@ export default function (pi: ExtensionAPI) {
       ref: Type.String({ description: "Interactive element ref like @e12 or e12" }),
       waitMode: Type.Optional(WAIT_MODE_SCHEMA),
       resnapshot: Type.Optional(Type.Boolean({ description: "Capture a fresh interactive snapshot after clicking", default: true })),
+      human: Type.Optional(
+        Type.Boolean({ description: "Approach along a curved, eased pointer path for hover-gated or bot-checked UI" }),
+      ),
     }),
     prepareArguments(args) {
       return prepareCompatArguments(args, {
@@ -467,7 +487,7 @@ export default function (pi: ExtensionAPI) {
           wait: "waitMode",
           reSnapshot: "resnapshot",
         },
-        booleanFields: ["resnapshot"],
+        booleanFields: ["resnapshot", "human"],
       });
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -479,6 +499,7 @@ export default function (pi: ExtensionAPI) {
           params.ref,
           (params.waitMode ?? "networkidle") as WaitMode,
           params.resnapshot ?? true,
+          params.human ?? false,
         );
         refreshUi(ctx);
         return toolResponse(result);
@@ -1046,18 +1067,40 @@ export default function (pi: ExtensionAPI) {
   registerBrowserTool({
     name: "browser_record",
     label: "Browser Record",
-    description: "Start or stop video recording (.webm) of the current browser context for QA artifact capture",
+    description:
+      "Start, restart, or stop video recording of the active tab for QA artifact capture. cursor=true draws the pointer and click ripples into the video; contactSheet=true also saves a timestamped PNG summary that is far cheaper to inspect than the video.",
     promptSnippet: "Capture a video of the page during a workflow for visual verification",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
-      action: BROWSER_CAPTURE_ACTION_SCHEMA,
+      action: BROWSER_RECORD_ACTION_SCHEMA,
       label: Type.Optional(Type.String({ description: "Label used to name the recording file under artifactDir" })),
+      format: Type.Optional(BROWSER_RECORD_FORMAT_SCHEMA),
+      fps: Type.Optional(Type.Number({ description: "Capture rate 1-60; 30 by default, 60 for motion-heavy takes" })),
+      cursor: Type.Optional(Type.Boolean({ description: "Render an animated pointer and click ripple into the video" })),
+      contactSheet: Type.Optional(
+        Type.Boolean({ description: "Also save a timestamped PNG summary of the visual changes" }),
+      ),
+      contactSheetThreshold: Type.Optional(
+        Type.Number({ description: "Pixel-change ratio (0-1) that selects a sheet frame; implies contactSheet" }),
+      ),
     }),
+    prepareArguments(args) {
+      return prepareCompatArguments(args, {
+        aliases: { frameRate: "fps", sheet: "contactSheet", showCursor: "cursor" },
+        booleanFields: ["cursor", "contactSheet"],
+        numberFields: ["fps", "contactSheetThreshold"],
+      });
+    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await recordBrowser(pi, state, ctx, {
-          action: params.action as CaptureAction,
+          action: params.action as RecordAction,
           label: params.label,
+          format: params.format as "webm" | "mp4" | undefined,
+          fps: params.fps,
+          cursor: params.cursor,
+          contactSheet: params.contactSheet,
+          contactSheetThreshold: params.contactSheetThreshold,
         });
         refreshUi(ctx);
         return toolResponse(result);
@@ -1095,7 +1138,7 @@ export default function (pi: ExtensionAPI) {
     name: "browser_checkpoint",
     label: "Browser Checkpoint",
     description:
-      "Save a screenshot plus an interactive snapshot for verification and recovery. annotate=true overlays numbered labels keyed to @eN refs (for vision use) and includes the legend.",
+      "Save a screenshot plus an interactive snapshot for verification and recovery. annotate=true overlays numbered labels keyed to @eN refs (for vision use) and includes the legend. In a loop, ifChanged=true and delta=true skip the unchanged screenshot and tree.",
     promptSnippet: "Capture a verification checkpoint after an important browser mutation",
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({
@@ -1103,15 +1146,28 @@ export default function (pi: ExtensionAPI) {
       annotate: Type.Optional(
         Type.Boolean({ description: "Overlay numbered ref labels on the screenshot and include the legend" }),
       ),
+      ifChanged: Type.Optional(
+        Type.Boolean({ description: "Skip writing the screenshot when the page looks identical to the last capture" }),
+      ),
+      threshold: Type.Optional(
+        Type.Number({ description: "Pixel-change ratio (0-1) below which the page counts as unchanged; implies ifChanged" }),
+      ),
+      delta: Type.Optional(Type.Boolean({ description: "Return only the snapshot changes since the last checkpoint" })),
     }),
     prepareArguments(args) {
       return prepareCompatArguments(args, {
-        booleanFields: ["annotate"],
+        booleanFields: ["annotate", "ifChanged", "delta"],
+        numberFields: ["threshold"],
       });
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await checkpointBrowserPage(pi, state, ctx, params.label, { annotate: params.annotate });
+        const result = await checkpointBrowserPage(pi, state, ctx, params.label, {
+          annotate: params.annotate,
+          ifChanged: params.ifChanged,
+          threshold: params.threshold,
+          delta: params.delta,
+        });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

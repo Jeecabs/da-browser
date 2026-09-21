@@ -42,8 +42,9 @@ Reload pi if already running:
 
 ## Runtime prerequisites
 
-- `agent-browser` 0.34.0 or newer on `PATH`
+- `agent-browser` 0.38.1 or newer on `PATH`
 - Arc/Chromium launched with a remote debugging port, default `9222`
+- `ffmpeg` on `PATH` for `browser_record` (`brew install ffmpeg`); `agent-browser doctor` reports it
 
 Install or upgrade the CLI:
 
@@ -64,6 +65,7 @@ Override defaults:
 - `/browser connect 9333`
 - `browser_connect({ port: 9333 })`
 - `PI_BROWSER_PORT=9333`
+- `DA_BROWSER_INPUT_MODE=smooth|human` moves the pointer along real paths for every action in the session
 
 ## Commands
 
@@ -80,9 +82,9 @@ Override defaults:
 | `browser_status` | Probe live CDP state plus strict session/target binding diagnostics |
 | `browser_connect` | Connect a strictly tab-pinned session to the browser auth context |
 | `browser_open` | Navigate to a URL |
-| `browser_snapshot` | Capture page accessibility snapshot |
+| `browser_snapshot` | Capture page accessibility snapshot, or `delta` changes only |
 | `browser_read` | Fetch markdown/llms-aware text, or read active tab |
-| `browser_click` | Click by `@ref` |
+| `browser_click` | Click by `@ref`, optionally along a human pointer path |
 | `browser_find` | Locate by role/text/label/testid/CSS and act |
 | `browser_fill` | Fill an input by `@ref` |
 | `browser_select` | Select dropdown option by `@ref` |
@@ -98,9 +100,9 @@ Override defaults:
 | `browser_tab` | List/open/close/switch tabs by id, label, or durable CDP targetId |
 | `browser_is` | Boolean visible/enabled/checked assertions |
 | `browser_set` | Configure viewport/device/geo/offline/media/headers/credentials |
-| `browser_record` | Start/stop WebM recording |
+| `browser_record` | Start/restart/stop a WebM or MP4 recording |
 | `browser_trace` | Start/stop Playwright trace zip |
-| `browser_checkpoint` | Save screenshot + interactive snapshot |
+| `browser_checkpoint` | Save screenshot + interactive snapshot, skippable when unchanged |
 | `browser_react` | Inspect React tree/fibers/renders/Suspense |
 | `browser_a11y` | Run embedded axe-core accessibility audits |
 | `browser_vitals` | Measure web vitals and React hydration timing |
@@ -122,5 +124,7 @@ pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pin
 - CDP actions use a dedicated, Pi-session-derived daemon session, enable agent-browser 0.34 strict `--pin-tab`, and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
 - The controlled tab binding survives daemon restarts. Other Pi sessions and user-opened tabs cannot steal the active target.
 - If the pinned tab disappears, commands fail safely with `tab_gone` and retain its `targetId` plus sanitized last URL when available. Recover with `browser_tab` new/switch, or use `browser_connect` as an explicit request for a fresh controlled tab. Only transient non-pin target failures retry automatically.
+- `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video.
+- Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default, which absorbs the animated control hairline; pass `threshold` to widen or tighten it.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

@@ -14,16 +14,21 @@ import {
   buildReactArgs,
   buildReadArgs,
   buildRecordArgs,
+  buildScreenshotArgs,
   buildSetArgs,
   buildSnapshotArgs,
   buildTabArgs,
   buildTraceArgs,
   buildWaitArgs,
+  CONTROL_MARKER_PIXEL_THRESHOLD,
+  contactSheetPath,
   normalizeTabRef,
+  resolveInputMode,
 } from "../src/agent-browser-args.ts";
 import {
   extractBooleanResult,
   extractGetResult,
+  formatAnnotationLegend,
   formatTabTable,
   normalizeTabList,
   unwrapCliEnvelope,
@@ -55,14 +60,14 @@ import {
 
 test("agent-browser version checks accept the minimum and newer releases", () => {
   assert.equal(extractAgentBrowserVersion("agent-browser 0.33.1"), "0.33.1");
-  assert.equal(extractAgentBrowserVersion("agent-browser v0.34.0-beta.1"), "0.34.0-beta.1");
+  assert.equal(extractAgentBrowserVersion("agent-browser v0.38.1-beta.1"), "0.38.1-beta.1");
   assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
 
-  assert.equal(supportsAgentBrowserVersion("0.31.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.33.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.33.2"), false);
-  assert.equal(supportsAgentBrowserVersion("0.34.0-beta.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.34.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.34.0"), false);
+  assert.equal(supportsAgentBrowserVersion("0.38.0"), false);
+  assert.equal(supportsAgentBrowserVersion("0.38.1-beta.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.38.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.39.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
 });
@@ -502,18 +507,45 @@ test("buildHarArgs validates capture mode and chooses the output path on stop", 
 });
 
 
-test("buildRecordArgs and buildTraceArgs cover start with/without label and stop", () => {
-  assert.deepEqual(buildRecordArgs({ action: "start" }), ["record", "start"]);
+test("buildRecordArgs covers presentation options, restart, and stop", () => {
   assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm" }), [
     "record",
     "start",
     "/tmp/x.webm",
+    "--json",
   ]);
-  assert.deepEqual(buildRecordArgs({ action: "stop" }), ["record", "stop"]);
+  assert.deepEqual(
+    buildRecordArgs({ action: "restart", file: "/tmp/take2.mp4", fps: 60, cursor: true, contactSheet: true }),
+    ["record", "restart", "/tmp/take2.mp4", "--fps", "60", "--cursor", "--contact-sheet", "--json"],
+  );
+  // An explicit threshold implies --contact-sheet, so passing both would be redundant.
+  assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm", contactSheet: true, contactSheetThreshold: 0.02 }), [
+    "record",
+    "start",
+    "/tmp/x.webm",
+    "--contact-sheet-threshold",
+    "0.02",
+    "--json",
+  ]);
+  assert.deepEqual(buildRecordArgs({ action: "stop" }), ["record", "stop", "--json"]);
+  assert.throws(() => buildRecordArgs({ action: "start" }), /requires an output file path/);
+  assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 0 }), /between 1 and 60/);
+  assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 61 }), /between 1 and 60/);
+  assert.throws(
+    () => buildRecordArgs({ action: "start", file: "/tmp/x.webm", contactSheetThreshold: 1.5 }),
+    /between 0 and 1/,
+  );
   assert.throws(
     () => buildRecordArgs({ action: "stop", file: "/tmp/x.webm" }),
     /does not accept a file path/,
   );
+
+  assert.equal(contactSheetPath("/tmp/da-browser/x/demo.webm"), "/tmp/da-browser/x/demo.contact-sheet.png");
+  assert.equal(contactSheetPath("/tmp/da-browser/x.y/demo.mp4"), "/tmp/da-browser/x.y/demo.contact-sheet.png");
+});
+
+
+test("buildTraceArgs covers start with/without label and stop", () => {
 
   assert.deepEqual(buildTraceArgs({ action: "start" }), ["trace", "start"]);
   assert.deepEqual(buildTraceArgs({ action: "start", file: "/tmp/t.zip" }), [
@@ -746,3 +778,77 @@ test("connectionHealth and binding status reflect degraded probes honestly", () 
   assert.equal(connectionHealth({ ...base, connected: true }, now), "ok");
 });
 
+
+
+test("buildScreenshotArgs keeps conditional captures and annotation together", () => {
+  assert.deepEqual(buildScreenshotArgs({ file: "/tmp/a.png" }), ["screenshot", "/tmp/a.png", "--json"]);
+  // A bare ifChanged still gets a threshold: the animated control hairline would otherwise
+  // make every capture of an idle page look changed.
+  assert.deepEqual(buildScreenshotArgs({ file: "/tmp/a.png", annotate: true, ifChanged: true }), [
+    "screenshot",
+    "--annotate",
+    "--threshold",
+    String(CONTROL_MARKER_PIXEL_THRESHOLD),
+    "/tmp/a.png",
+    "--json",
+  ]);
+  // An explicit threshold wins and already implies --if-changed.
+  assert.deepEqual(buildScreenshotArgs({ file: "/tmp/a.png", ifChanged: true, threshold: 0.01 }), [
+    "screenshot",
+    "--threshold",
+    "0.01",
+    "/tmp/a.png",
+    "--json",
+  ]);
+  assert.throws(() => buildScreenshotArgs({ file: "/tmp/a.png", threshold: 2 }), /between 0 and 1/);
+});
+
+
+test("buildSnapshotArgs supports deltas and rejects a baseline reset without one", () => {
+  assert.deepEqual(buildSnapshotArgs({ interactiveOnly: true, delta: true }), ["snapshot", "-i", "--delta"]);
+  assert.deepEqual(buildSnapshotArgs({ interactiveOnly: true, delta: true, full: true }), [
+    "snapshot",
+    "-i",
+    "--delta",
+    "--full",
+  ]);
+  assert.throws(() => buildSnapshotArgs({ full: true }), /only applies with delta/);
+});
+
+
+test("buildFindArgs allows human pointer paths only for pointer actions", () => {
+  assert.deepEqual(buildFindArgs({ locator: "text", value: "Buy", action: "click", human: true }), [
+    "find",
+    "text",
+    "Buy",
+    "click",
+    "--human",
+  ]);
+  assert.throws(
+    () => buildFindArgs({ locator: "label", value: "Email", action: "fill", text: "a@b.c", human: true }),
+    /only applies to pointer actions/,
+  );
+});
+
+
+test("resolveInputMode treats instant as the implicit default and rejects nonsense", () => {
+  assert.equal(resolveInputMode({}), undefined);
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "  " }), undefined);
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "instant" }), undefined);
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "Human" }), "human");
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "smooth" }), "smooth");
+  assert.throws(() => resolveInputMode({ DA_BROWSER_INPUT_MODE: "teleport" }), /must be one of/);
+});
+
+
+test("formatAnnotationLegend renders the [N] to @eN mapping a vision pass needs", () => {
+  const legend = formatAnnotationLegend({
+    annotations: [
+      { number: 1, ref: "e1", role: "heading", name: "Example Domain", box: { x: 0, y: 0, width: 1, height: 1 } },
+      { number: 2, ref: "e2", role: "link", name: "" },
+    ],
+  });
+  assert.equal(legend, 'Annotated refs:\n[1] @e1 heading "Example Domain"\n[2] @e2 link');
+  assert.equal(formatAnnotationLegend({ annotations: [] }), "");
+  assert.equal(formatAnnotationLegend(undefined), "");
+});

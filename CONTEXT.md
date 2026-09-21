@@ -35,11 +35,13 @@ _Avoid_: Global permanent artifact store
 - **Trusted Browser Automation** cannot use agent-browser domain/WebRTC containment on pre-existing CDP pages. CDP commands run in a dedicated daemon session and explicitly clear inherited allowlists. Explicit-URL reads can still use them.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.
 - **da browser** checks its minimum supported `agent-browser` version at session start and before each action. Newer versions remain valid.
-- Every **Controlled Tab** uses agent-browser 0.34 strict `--pin-tab` with a named, Pi-session-derived daemon. Its target binding survives daemon restarts, and user/other-session tabs must never steal it.
+- Every **Controlled Tab** uses agent-browser strict `--pin-tab` with a named, Pi-session-derived daemon. Its target binding survives daemon restarts, and user/other-session tabs must never steal it.
 - A strict `tab_gone` is a safe isolation stop, not a retry signal. Preserve its durable target id and sanitized last URL; recovery must be explicit through tab new/switch or browser connect.
 - **Controlled Tab** state is session/branch scoped, not global truth.
 - **Recoverable CDP Failure** should say whether to relaunch Arc, reconnect, wait, or retry.
 - **Browser Artifacts** are temporary evidence for agent workflows and visual QA.
+- A **Conditional Artifact** (`browser_checkpoint ifChanged`, `browser_snapshot delta`) is the default for repeated observation of one page: an unchanged capture returns no path and no tree, so polling stays cheap.
+- A **Presentation Recording** (`cursor`, `contactSheet`) is for a human or a vision pass to watch, not just a file on disk. `pi-filmstrip` consumes the contact sheet rather than resampling the video.
 
 ## Testing
 

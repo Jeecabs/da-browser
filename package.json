@@ -16,6 +16,7 @@
     ]
   },
   "scripts": {
+    "preview:control": "node --experimental-strip-types scripts/preview-controlled-tab.mjs",
     "check": "tsc --noEmit",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "test:e2e": "node --test --experimental-strip-types tests/pin-tab.e2e.ts"

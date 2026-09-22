@@ -114,6 +114,7 @@ pnpm install
 pnpm check
 pnpm test
 pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pinning
+pnpm preview:control  # compare the live control indicator on light and dark backgrounds
 ```
 
 ## Notes
@@ -125,6 +126,7 @@ pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pin
 - The controlled tab binding survives daemon restarts. Other Pi sessions and user-opened tabs cannot steal the active target.
 - If the pinned tab disappears, commands fail safely with `tab_gone` and retain its `targetId` plus sanitized last URL when available. Recover with `browser_tab` new/switch, or use `browser_connect` as an explicit request for a fresh controlled tab. Only transient non-pin target failures retry automatically.
 - `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video.
-- Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default, which absorbs the animated control hairline; pass `threshold` to widen or tighten it.
+- Controlled tabs use a coral pointer favicon and a stationary glow that fades inward from the viewport edges. The marker does not block clicks, move content, or animate; releasing control restores the site's original favicon links.
+- Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

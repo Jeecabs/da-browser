@@ -746,7 +746,8 @@ test("controlled-tab overlay builds safe, valid inject scripts", () => {
   assert.doesNotThrow(() => new Function(script));
   assert.doesNotMatch(script, /pi agent · supabase\.com/);
   assert.doesNotMatch(script, /__pi_agent_controlled_tab_label__/);
-  assert.match(script, /height:2px/);
+  assert.match(script, /pointer-events:none!important/);
+  assert.match(script, /data:image\/png;base64,/);
 
   // Labels are no longer rendered into page JS; hostile labels should not appear in script.
   const payload = '"; alert(1); //';

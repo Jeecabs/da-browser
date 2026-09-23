@@ -4,7 +4,9 @@
   <img src="assets/da-browser.png" alt="Tabby cat reaching for a cursor in a browser window" width="400" />
 </p>
 
-[pi](https://github.com/badlogic/pi-mono) extension for browser-control tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
+[pi](https://github.com/earendil-works/pi) extension for browser-control tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
+
+[Documentation](https://jeecabs.github.io/pi-tooling/da-browser/) · [All tools](https://jeecabs.github.io/pi-tooling/)
 
 ## Install
 

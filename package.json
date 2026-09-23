@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
-  "description": "Private pi package for browser-control tools powered by agent-browser.",
+  "description": "Pi browser-control tools powered by agent-browser.",
+  "homepage": "https://jeecabs.github.io/pi-tooling/da-browser/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jeecabs/da-browser.git"
+  },
   "keywords": [
     "pi-package",
     "browser-control",

@@ -1,54 +1,68 @@
-// Pure builders for the "this tab is controlled by the pi agent" overlay, injected into the
-// page via `agent-browser eval`. Kept dependency-free (like cdp-errors.ts / agent-browser-args.ts)
-// so the generated scripts are unit-testable without a browser.
-//
-// The overlay stays deliberately quiet: a 2px red hairline along the top of the viewport
-// and a red favicon mirrored in the tab strip. Everything overlays the page (position:fixed +
-// pointer-events:none) so it never reflows or blocks content.
+import { readFileSync } from "node:fs";
+
+// Builders for the controlled-tab marker, injected via `agent-browser eval`.
+// A stationary coral glow fades inward from the viewport edges. The transparent
+// center and pointer-events:none keep page content and interactions unobstructed.
+// Embed the packaged PNG so controlled pages never need to fetch a local asset.
 
 const CONTROLLED_TAB_BADGE_ID = "__pi_agent_controlled_tab_badge__";
 const CONTROLLED_TAB_STYLE_ID = "__pi_agent_controlled_tab_style__";
 const CONTROLLED_TAB_FAVICON_ATTR = "data-pi-agent-controlled-tab-favicon";
-const CONTROLLED_TAB_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f87171"/>
-      <stop offset="0.55" stop-color="#dc2626"/>
-      <stop offset="1" stop-color="#991b1b"/>
-    </linearGradient>
-    <radialGradient id="hl" cx="30%" cy="22%" r="70%">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#g)"/>
-  <rect width="64" height="64" rx="15" fill="url(#hl)"/>
-</svg>`;
+const CONTROLLED_TAB_FAVICON_REL_ATTR = "data-pi-agent-controlled-tab-original-rel";
+const CONTROLLED_TAB_FAVICON_ID = "__pi_agent_controlled_tab_favicon__";
+const CONTROLLED_TAB_FAVICON_HREF = "data:image/png;base64," + readFileSync(
+  new URL("../assets/controlled-tab/favicon-64.png", import.meta.url),
+).toString("base64");
+
+// Restore the previous marker's in-place favicon override, including after a reload
+// from an older extension version. New markers use a separate icon link instead.
+const RESTORE_LEGACY_FAVICON_SCRIPT = `
+  const legacyIcon = document.querySelector("link[" + faviconAttr + "]:not([id='" + faviconId + "'])");
+  if (legacyIcon) {
+    if (legacyIcon.dataset.piAgentControlledTabCreated === "true") {
+      legacyIcon.remove();
+    } else {
+      const originalHref = legacyIcon.dataset.piAgentControlledTabOriginalHref || "";
+      if (originalHref) legacyIcon.setAttribute("href", originalHref);
+      else legacyIcon.removeAttribute("href");
+      legacyIcon.removeAttribute(faviconAttr);
+      delete legacyIcon.dataset.piAgentControlledTabOriginalHref;
+    }
+  }`;
 
 // Builds the inject script. `labelText` is intentionally unused now; the visible page marker
-// is only the top hairline. Keep the parameter for call-site compatibility.
+// is only the edge glow. Keep the parameter for call-site compatibility.
 export function controlledTabMarkScript(_labelText: string): string {
   return `(() => {
   const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
   const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
   const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
-  const faviconHref = "data:image/svg+xml," + encodeURIComponent(${JSON.stringify(CONTROLLED_TAB_FAVICON_SVG)});
+  const faviconRelAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_REL_ATTR)};
+  const faviconId = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ID)};
+  const faviconHref = ${JSON.stringify(CONTROLLED_TAB_FAVICON_HREF)};
 
-  let icon = document.querySelector("link[" + faviconAttr + "]");
-  if (!icon) {
-    icon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel*="icon" i]');
+  ${RESTORE_LEGACY_FAVICON_SCRIPT}
+
+  // Temporarily suspend all tab-icon candidates, including alternate sizes/themes.
+  // Preserve their href, type, sizes and media attributes exactly as the site set them.
+  for (const original of document.querySelectorAll('link[rel~="icon" i]')) {
+    if (original.id === faviconId) continue;
+    if (!original.hasAttribute(faviconRelAttr)) {
+      original.setAttribute(faviconRelAttr, original.getAttribute("rel"));
+    }
+    original.removeAttribute("rel");
   }
+  let icon = document.getElementById(faviconId);
   if (!icon) {
     icon = document.createElement("link");
+    icon.id = faviconId;
     icon.rel = "icon";
-    icon.dataset.piAgentControlledTabCreated = "true";
+    icon.type = "image/png";
+    icon.sizes = "64x64";
+    icon.setAttribute(faviconAttr, "true");
+    icon.href = faviconHref;
     (document.head || document.documentElement).appendChild(icon);
   }
-  if (!icon.hasAttribute(faviconAttr)) {
-    icon.dataset.piAgentControlledTabOriginalHref = icon.getAttribute("href") || "";
-  }
-  icon.setAttribute(faviconAttr, "true");
-  icon.href = faviconHref;
 
   const sel = "#" + badgeId;
   let style = document.getElementById(styleId);
@@ -57,19 +71,26 @@ export function controlledTabMarkScript(_labelText: string): string {
     style.id = styleId;
     (document.head || document.documentElement).appendChild(style);
   }
-  style.textContent =
-    "@keyframes __pi_rec_slide{from{background-position:0 0}to{background-position:200% 0}}" +
-    "@keyframes __pi_rec_pulse{0%,100%{opacity:.45}50%{opacity:1}}" +
-    sel + "{position:fixed;top:0;left:0;right:0;height:2px;z-index:2147483647;pointer-events:none;opacity:.85;" +
-      "background:linear-gradient(90deg,#991b1b,#dc2626 22%,#f87171 50%,#dc2626 78%,#991b1b);background-size:200% 100%;" +
-      "animation:__pi_rec_slide 6s linear infinite;}" +
-    "@media (prefers-reduced-motion: reduce){" +
-      sel + "{animation:none}}";
+  const css = sel + "{all:initial!important;position:fixed!important;inset:0!important;" +
+    "display:block!important;z-index:2147483647!important;pointer-events:none!important;" +
+    "background:" +
+      "radial-gradient(ellipse at 25% 0,rgba(255,182,153,.32),transparent 70%) top left/65% 28px no-repeat," +
+      "radial-gradient(ellipse at 85% 0,rgba(249,112,102,.22),transparent 70%) top right/60% 24px no-repeat," +
+      "linear-gradient(to bottom,rgba(239,92,80,.64),rgba(249,112,102,.2) 4px,transparent 22px) top/100% 22px no-repeat," +
+      "linear-gradient(to right,rgba(239,92,80,.38),rgba(249,112,102,.1) 3px,transparent 12px) left/12px 100% no-repeat," +
+      "linear-gradient(to left,rgba(239,92,80,.38),rgba(249,112,102,.1) 3px,transparent 12px) right/12px 100% no-repeat," +
+      "linear-gradient(to top,rgba(239,92,80,.28),transparent 10px) bottom/100% 10px no-repeat!important;}" +
+    "@media print{" + sel + "{display:none!important}}" +
+    "@media (forced-colors:active){" + sel + "{background:none!important;outline:2px solid Highlight!important;outline-offset:-2px!important}}";
+  if (style.textContent !== css) style.textContent = css;
 
-  document.getElementById(badgeId)?.remove();
-  const root = document.createElement("div");
-  root.id = badgeId;
-  document.documentElement.appendChild(root);
+  let root = document.getElementById(badgeId);
+  if (!root) {
+    root = document.createElement("div");
+    root.id = badgeId;
+    document.documentElement.appendChild(root);
+  }
+  root.setAttribute("aria-hidden", "true");
 
 })()`;
 }
@@ -78,23 +99,19 @@ export const CONTROLLED_TAB_CLEAR_SCRIPT = `(() => {
   const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
   const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
   const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
+  const faviconRelAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_REL_ATTR)};
+  const faviconId = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ID)};
 
   document.getElementById(badgeId)?.remove();
   document.getElementById("__pi_agent_controlled_tab_label__")?.remove();
   document.getElementById(styleId)?.remove();
 
-  const icon = document.querySelector("link[" + faviconAttr + "]");
-  if (icon) {
-    if (icon.dataset.piAgentControlledTabCreated === "true") {
-      icon.remove();
-    } else {
-      const originalHref = icon.dataset.piAgentControlledTabOriginalHref || "";
-      if (originalHref) icon.setAttribute("href", originalHref);
-      else icon.removeAttribute("href");
-      icon.removeAttribute(faviconAttr);
-      delete icon.dataset.piAgentControlledTabOriginalHref;
-    }
+  document.getElementById(faviconId)?.remove();
+  for (const original of document.querySelectorAll("link[" + faviconRelAttr + "]")) {
+    original.setAttribute("rel", original.getAttribute(faviconRelAttr));
+    original.removeAttribute(faviconRelAttr);
   }
+  ${RESTORE_LEGACY_FAVICON_SCRIPT}
 })()`;
 
 // Compact, always-correct pill text: identifies the agent and the live target it's driving.

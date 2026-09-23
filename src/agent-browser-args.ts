@@ -105,10 +105,9 @@ export function buildSnapshotArgs(opts: SnapshotArgsOptions): string[] {
 }
 
 /**
- * da-browser paints an animated 2px hairline across the top of the controlled tab, so two
- * captures of an idle page are never pixel-identical and a bare `--if-changed` would always
- * report a change. A full-width 2px band is well under 1% of any real viewport, so this is
- * the floor a conditional capture uses unless the caller sets its own threshold.
+ * Keep conditional captures tolerant of small rendering differences. The controlled-tab
+ * edge glow is stationary and does not itself trigger captures of an idle page.
+ * Callers can supply a tighter threshold when they need pixel-level comparisons.
  */
 export const CONTROL_MARKER_PIXEL_THRESHOLD = 0.01;
 

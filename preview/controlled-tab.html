@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>da browser · Control indicator</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237a8580'/%3E%3C/svg%3E">
+  <style>
+    * { box-sizing: border-box; }
+    :root { color-scheme: light; --page: #f8f7f4; --ink: #242521; --muted: #777970; --line: #deded6; --surface: #fffefa; }
+    :root[data-theme=dark] { color-scheme: dark; --page: #171917; --ink: #eeeee8; --muted: #a1a59a; --line: #363a34; --surface: #20241f; }
+    body { margin: 0; min-height: 100vh; background: var(--page); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { margin: 0 48px; padding: 30px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { font-size: 18px; font-weight: 650; letter-spacing: -.5px; }
+    .brand span { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--line); font-size: 13px; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+    .controls { display: flex; gap: 8px; }
+    button { border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; padding: 10px 16px; font: inherit; font-size: 13px; cursor: pointer; }
+    button:hover { background: var(--surface); }
+    button:focus-visible { outline: 2px solid #e26656; outline-offset: 3px; }
+    main { max-width: 1016px; margin: 74px auto 40px; padding: 0 48px; }
+    .intro { display: grid; grid-template-columns: 1fr 130px; gap: 32px; align-items: center; }
+    .eyebrow { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #ef6d5e; }
+    body[data-controlled=false] .dot { background: #7a8580; }
+    h1 { font-size: clamp(36px, 4.6vw, 55px); font-weight: 500; line-height: 1.07; letter-spacing: -2.4px; margin: 22px 0; max-width: 560px; }
+    .intro p { color: var(--muted); max-width: 470px; line-height: 1.7; }
+    .large-icon { width: 112px; height: 112px; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 48px 0 32px; }
+    .sample { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .sample.light { color: #343832; background: #fffefa; }
+    .sample.dark { color: #e8ebe5; background: #242923; }
+    .tabstrip { padding: 12px 12px 0; background: #e9eae5; }
+    .dark .tabstrip { background: #121711; }
+    .tab { display: flex; align-items: center; gap: 9px; background: #fffefa; font-size: 12px; padding: 11px 14px; border-radius: 8px 8px 0 0; max-width: 255px; }
+    .dark .tab { background: #242923; }
+    .tab img { width: 16px; height: 16px; }
+    .close { margin-left: auto; opacity: .5; font-size: 16px; line-height: 1; }
+    .sample-body { padding: 24px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+    .sample-body span { opacity: .5; font-size: 12px; }
+    .details { display: grid; grid-template-columns: repeat(3,1fr); gap: 28px; margin-top: 40px; }
+    .detail { border-top: 1px solid var(--line); padding-top: 18px; }
+    .detail b { font-weight: 500; font-size: 14px; }
+    .detail p { margin: 6px 0 0; font-size: 13px; color: var(--muted); line-height: 1.65; }
+    footer { margin-top: 56px; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    @media (max-width: 650px) {
+      header { margin: 0 24px; padding: 22px 0; flex-wrap: wrap; gap: 18px; }
+      .brand span { font-size: 12px; }
+      main { padding: 0 24px; margin-top: 40px; }
+      .intro { grid-template-columns: 1fr; gap: 8px; }
+      .large-icon { grid-row: 1; width: 64px; height: 64px; }
+      h1 { letter-spacing: -1.5px; }
+      .tabs { grid-template-columns: 1fr; margin-top: 28px; }
+      .details { grid-template-columns: 1fr; gap: 22px; margin-top: 28px; }
+      footer { margin-top: 32px; }
+    }
+  </style>
+</head>
+<body data-controlled="true">
+  <header>
+    <div class="brand">da browser<span>Control indicator</span></div>
+    <div class="controls">
+      <button id="theme" type="button">Dark background</button>
+      <button id="control" type="button" aria-pressed="true">Release control</button>
+    </div>
+  </header>
+  <main>
+    <div class="intro">
+      <div>
+        <div class="eyebrow"><span class="dot"></span><span id="status">Agent in control</span></div>
+        <h1>A softer sign<br>of control.</h1>
+        <p>A warm coral edge glow and a distinctive pointer in the tab. Easy to recognise, with room for the page to breathe.</p>
+      </div>
+      <img class="large-icon" src="/favicon-source.png" alt="Coral rounded-square favicon with an ivory pointer">
+    </div>
+    <div class="tabs" aria-label="Favicon at actual browser-tab size">
+      <div class="sample light">
+        <div class="tabstrip"><div class="tab"><img src="/favicon-32.png" alt=""><span>Project workspace</span><span class="close" aria-hidden="true">×</span></div></div>
+        <div class="sample-body">Light tab strip<span>16 px · actual size</span></div>
+      </div>
+      <div class="sample dark">
+        <div class="tabstrip"><div class="tab"><img src="/favicon-32.png" alt=""><span>Project workspace</span><span class="close" aria-hidden="true">×</span></div></div>
+        <div class="sample-body">Dark tab strip<span>16 px · actual size</span></div>
+      </div>
+    </div>
+    <div class="details">
+      <div class="detail"><b>Soft at the edges</b><p>Coral fades gently into the page, with a warmer highlight along the top.</p></div>
+      <div class="detail"><b>Still and unobtrusive</b><p>No looping motion. Clicks, scrolling and the page layout work as usual.</p></div>
+      <div class="detail"><b>Clear when released</b><p>The glow disappears and the site's original favicon returns.</p></div>
+    </div>
+    <footer><span class="dot"></span>Live preview · try the controls above to compare.</footer>
+  </main>
+  <script src="/control.js"></script>
+  <script>
+    window.markControlledTab();
+    document.getElementById('theme').addEventListener('click', (event) => {
+      const dark = document.documentElement.dataset.theme !== 'dark';
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      event.currentTarget.textContent = dark ? 'Light background' : 'Dark background';
+    });
+    document.getElementById('control').addEventListener('click', (event) => {
+      const active = document.body.dataset.controlled !== 'true';
+      document.body.dataset.controlled = String(active);
+      event.currentTarget.setAttribute('aria-pressed', String(active));
+      event.currentTarget.textContent = active ? 'Release control' : 'Take control';
+      document.getElementById('status').textContent = active ? 'Agent in control' : 'Control released';
+      if (active) window.markControlledTab(); else window.clearControlledTab();
+    });
+  </script>
+</body>
+</html>

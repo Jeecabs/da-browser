@@ -1,5 +1,9 @@
 # da browser
 
+<p align="center">
+  <img src="assets/da-browser.png" alt="Tabby cat reaching for a cursor in a browser window" width="400" />
+</p>
+
 Private [pi](https://github.com/badlogic/pi-mono) package for browser-control tools powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser).
 
 

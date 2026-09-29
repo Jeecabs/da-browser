@@ -9,6 +9,7 @@ import {
   clickBrowserElement,
   connectBrowser,
   evalInBrowser,
+  exportCookies,
   fillBrowserElement,
   findBrowserElement,
   debugBrowserPage,
@@ -132,7 +133,7 @@ const BROWSER_GUIDELINES = [
   "Use browser_is for boolean asserts (visible/enabled/checked) instead of regex-matching browser_get text.",
   "For React/Next.js debugging: browser_open with enableReactDevtools=true, then browser_react (tree/inspect/renders/suspense). browser_vitals and browser_nav pushstate work on any page without the hook.",
   "Use browser_a11y for embedded axe-core WCAG audits; incomplete checks still need manual review.",
-  "HAR files can contain cookies, authorization headers, and response bodies. Keep browser_har captures temporary and avoid sharing them without inspection.",
+  "HAR files can contain cookies, authorization headers, and response bodies. Keep browser_har captures temporary and avoid sharing them without inspection. agent-browser HARs omit the Cookie request header; export session cookies with browser_cookies, never by printing them.",
   "On tab_gone, strict isolation worked: recover explicitly with browser_tab new, browser_tab list then switch by targetId, or browser_connect to create a fresh controlled tab. Only transient non-pin target failures are auto-retried. browser_status actively probes the port, so trust it over assumptions about connection state.",
   "alert/beforeunload dialogs are auto-accepted by agent-browser; for confirm/prompt dialogs use browser_command ['dialog','accept'] or ['dialog','dismiss'].",
 ];
@@ -1056,6 +1057,30 @@ export default function (pi: ExtensionAPI) {
           content: params.content as HarContentMode | undefined,
           label: params.label,
         });
+        refreshUi(ctx);
+        return toolResponse(result);
+      } catch (error) {
+        return handleFailure(ctx, error);
+      }
+    },
+  });
+
+  registerBrowserTool({
+    name: "browser_cookies",
+    label: "Browser Cookies",
+    description:
+      "Export the controlled tab's cookies to a private JSON file (mode 600) for a derived HTTP client to load. Only cookies sent to the current page URL are included, so open the API's origin first. Values never enter context: the result lists names, scope, flags, and expiry.",
+    promptSnippet: "Export session cookies to a private file without exposing their values",
+    promptGuidelines: BROWSER_GUIDELINES,
+    parameters: Type.Object({
+      path: Type.Optional(
+        Type.String({ description: "Output file (~ expands). Defaults to the artifact dir. Keep it out of version control." }),
+      ),
+      label: Type.Optional(Type.String({ description: "Label for the default artifact path" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const result = await exportCookies(pi, state, ctx, { path: params.path, label: params.label });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

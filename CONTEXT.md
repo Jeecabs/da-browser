@@ -24,6 +24,10 @@ _Avoid_: Hidden background browser, most-recent-tab adoption, cross-session targ
 A browser-down, target-gone, or busy-page state that should produce a clear recovery step or one automatic retry.
 _Avoid_: Raw protocol failure, silent retry loop
 
+**Derived Client**:
+A standalone HTTP client generated from one recorded session by the `derive-client` skill, so repeat automation of a site skips the browser. It authenticates with a cookie file exported by `browser_cookies`, and the browser is needed again only to refresh the login.
+_Avoid_: Scraper, browser-driven loop for every call
+
 **Browser Artifact**:
 Screenshot, snapshot, eval output, accessibility report, HAR capture, video, or trace file saved under the deterministic `/tmp/da-browser/<cwd-slug>` directory.
 _Avoid_: Global permanent artifact store
@@ -40,6 +44,7 @@ _Avoid_: Global permanent artifact store
 - **Controlled Tab** state is session/branch scoped, not global truth.
 - **Recoverable CDP Failure** should say whether to relaunch Arc, reconnect, wait, or retry.
 - **Browser Artifacts** are temporary evidence for agent workflows and visual QA.
+- A **Derived Client** never sees secrets through model context: HARs are read through the masking analyzer, and cookie values go straight from `browser_cookies` to a mode-600 file.
 - A **Conditional Artifact** (`browser_checkpoint ifChanged`, `browser_snapshot delta`) is the default for repeated observation of one page: an unchanged capture returns no path and no tree, so polling stays cheap.
 - A **Presentation Recording** (`cursor`, `contactSheet`) is for a human or a vision pass to watch, not just a file on disk. `pi-filmstrip` consumes the contact sheet rather than resampling the video.
 

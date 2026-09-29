@@ -27,7 +27,9 @@ import {
 } from "../src/agent-browser-args.ts";
 import {
   extractBooleanResult,
+  extractCookies,
   extractGetResult,
+  formatCookieSummary,
   formatAnnotationLegend,
   formatTabTable,
   normalizeTabList,
@@ -852,4 +854,19 @@ test("formatAnnotationLegend renders the [N] to @eN mapping a vision pass needs"
   assert.equal(legend, 'Annotated refs:\n[1] @e1 heading "Example Domain"\n[2] @e2 link');
   assert.equal(formatAnnotationLegend({ annotations: [] }), "");
   assert.equal(formatAnnotationLegend(undefined), "");
+});
+
+test("cookie export summary lists scope and lifetime but never values", () => {
+  const cookies = extractCookies({
+    cookies: [
+      { name: "sid", value: "s3cr3t-session", domain: ".example.com", path: "/", expires: -1, httpOnly: true, secure: true },
+      { name: "prefs", value: "dark", domain: "app.example.com", path: "/", expires: 1_000 + 7_200 },
+      { name: "broken" },
+    ],
+  });
+  assert.equal(cookies.length, 2);
+  const summary = formatCookieSummary(cookies, 1_000_000);
+  assert.equal(summary, "sid  .example.com/  session  httpOnly,secure\nprefs  app.example.com/  expires in 2h");
+  assert.ok(!summary.includes("s3cr3t") && !summary.includes("dark"));
+  assert.equal(formatCookieSummary([]), "(no cookies for the current page URL)");
 });

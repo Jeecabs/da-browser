@@ -108,6 +108,51 @@ export function formatAnnotationLegend(parsed: unknown): string {
   return lines.length ? `Annotated refs:\n${lines.join("\n")}` : "";
 }
 
+export interface BrowserCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path?: string;
+  /** Unix seconds; -1 for session cookies. */
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+}
+
+export function extractCookies(parsed: unknown): BrowserCookie[] {
+  const list = Array.isArray(parsed) ? parsed : isPlainObject(parsed) && Array.isArray(parsed.cookies) ? parsed.cookies : [];
+  return list.filter(
+    (cookie): cookie is BrowserCookie =>
+      isPlainObject(cookie) &&
+      typeof cookie.name === "string" &&
+      typeof cookie.value === "string" &&
+      typeof cookie.domain === "string",
+  );
+}
+
+/** Names, scope, flags, and lifetime only. Cookie values must never reach model context. */
+export function formatCookieSummary(cookies: BrowserCookie[], nowMs = Date.now()): string {
+  if (cookies.length === 0) return "(no cookies for the current page URL)";
+  return cookies
+    .map((cookie) => {
+      const lifetime = !cookie.expires || cookie.expires < 0 ? "session" : formatExpiry(cookie.expires * 1000 - nowMs);
+      const flags = [cookie.httpOnly ? "httpOnly" : "", cookie.secure ? "secure" : ""].filter(Boolean).join(",");
+      return `${cookie.name}  ${cookie.domain}${cookie.path ?? "/"}  ${lifetime}${flags ? `  ${flags}` : ""}`;
+    })
+    .join("\n");
+}
+
+function formatExpiry(deltaMs: number): string {
+  const abs = Math.abs(deltaMs);
+  const text =
+    abs < 3_600_000
+      ? `${Math.round(abs / 60_000)}m`
+      : abs < 172_800_000
+        ? `${Math.round(abs / 3_600_000)}h`
+        : `${Math.round(abs / 86_400_000)}d`;
+  return deltaMs < 0 ? `expired ${text} ago` : `expires in ${text}`;
+}
+
 export function normalizeTabList(parsed: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(parsed)) return parsed.filter(isPlainObject);
   if (isPlainObject(parsed) && Array.isArray(parsed.tabs)) {

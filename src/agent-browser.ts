@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -43,8 +44,10 @@ import {
 import {
   AgentBrowserCliError,
   extractBooleanResult,
+  extractCookies,
   extractGetResult,
   formatAnnotationLegend,
+  formatCookieSummary,
   formatGetResult,
   formatTabTable,
   isPlainObject,
@@ -1200,6 +1203,36 @@ export async function harBrowser(
       file,
       durationMs: previous ? Date.now() - previous.startedAt : undefined,
     },
+  };
+}
+
+export async function exportCookies(
+  pi: ExtensionAPI,
+  state: BrowserState,
+  ctx: ExtensionContext,
+  params: { path?: string; label?: string },
+): Promise<BrowserActionResult> {
+  await ensureReady(pi, state, ctx);
+  await ensureArtifactDir(state);
+
+  // agent-browser scopes `cookies get` to the pinned tab's URL, so the caller must be on the
+  // origin whose cookies it wants. The values go straight to disk and never into the result.
+  const cookies = extractCookies(await runAgentBrowserJSON(pi, ["cookies", "get"], ctx, 30_000, { port: state.port }));
+  const file = params.path
+    ? resolve(ctx.cwd, params.path.replace(/^~(?=$|\/)/, homedir()))
+    : artifactPath(state, params.label ?? "cookies", "json");
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  await writeFile(file, `${JSON.stringify(cookies, null, 2)}\n`, { mode: 0o600 });
+  await chmod(file, 0o600); // writeFile's mode only applies when it creates the file
+  state.connected = true;
+  state.lastAction = "cookies get";
+  state.lastError = undefined;
+
+  return {
+    summary: `Exported ${cookies.length} cookies for ${state.currentUrl ?? "the current page"} → ${file} (mode 600, values withheld)`,
+    contentText: formatCookieSummary(cookies),
+    artifacts: [file],
+    diagnostics: { file, count: cookies.length, currentUrl: state.currentUrl },
   };
 }
 

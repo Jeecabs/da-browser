@@ -64,6 +64,7 @@ Reload pi if already running:
 | `browser_get` | Read text/html/value/attr/title/url/count/box/styles/cdp-url |
 | `browser_debug` | Read console logs, page errors, network requests |
 | `browser_har` | Capture network traffic and response bodies as HAR |
+| `browser_cookies` | Export the controlled tab's cookies to a mode-600 file; values never enter context |
 | `browser_command` | Run raw `agent-browser` args with active CDP port |
 | `browser_eval` | Evaluate JS in page context |
 | `browser_tab` | List/open/close/switch tabs by id, label, or durable CDP targetId |
@@ -93,6 +94,14 @@ Reload pi if already running:
 - Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.
+- agent-browser HARs omit the `Cookie`, `Accept`, `Origin`, and `Sec-Fetch-*` request headers. `browser_cookies` exports only cookies sent to the current page URL, so open the API's origin first.
+
+## Skills
+
+`derive-client` (`skills/derive-client`) turns one recorded session into a standalone API client:
+
+- `skills/derive-client/scripts/har-endpoints.mjs <file.har> [--show N] [--all]` groups the API calls into templated endpoints with param variance, merged response types, and auth headers, with secrets masked.
+- `skills/derive-client/assets/client-template.mts` is a zero-dependency Node client with cookie-jar matching, pacing, 429 backoff, expired-session errors, and `smoke`.
 
 ## Development
 

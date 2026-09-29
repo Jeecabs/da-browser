@@ -57,12 +57,13 @@ Open a page and snapshot it:
 
 ## Tools
 
-27 typed tools cover open, snapshot, read, click, find, fill, navigation, tabs, eval, recording, traces, React inspection, a11y, and vitals. Full table and flags: [docs/tools.md](docs/tools.md).
+28 typed tools cover open, snapshot, read, click, find, fill, navigation, tabs, eval, recording, traces, HAR and cookie export, React inspection, a11y, and vitals. Full table and flags: [docs/tools.md](docs/tools.md).
 
 ## Skills
 
 | Skill | Description |
 | --- | --- |
+| `derive-client` | Record a site once, then generate a zero-dependency client/CLI that calls its internal API directly. Masked HAR analysis, safe cookie export, `smoke` drift check. |
 | `slack` | Slack web app on these tools: unreads, messages, threads, search, Activity, and a guarded send/reply that pins the destination and never touches drafts. |
 
 ## Development

@@ -7,7 +7,7 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
       '@earendil-works/pi-agent-core':
         specifier: ^0.78.1
         version: 0.78.1(ws@8.21.0)(zod@4.4.3)
@@ -20,13 +20,12 @@ importers:
       '@earendil-works/pi-tui':
         specifier: ^0.78.1
         version: 0.78.1
-      typebox:
-        specifier: 1.1.38
-        version: 1.1.38
-    devDependencies:
       '@types/node':
         specifier: ^24.3.0
         version: 24.12.2
+      typebox:
+        specifier: 1.1.38
+        version: 1.1.38
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

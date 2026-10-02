@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import { hyperlink, truncateToWidth, visibleWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import type { BrowserState, ConnectionHealth } from "./state.js";
@@ -5,10 +7,20 @@ import type { BrowserState, ConnectionHealth } from "./state.js";
 // How da-browser shows up in the pi TUI. Each surface answers one question:
 //   status chip   where is the agent's browser?       static, short, hidden when idle
 //   trail row     what is it doing right now?          above the editor, only during a burst
-//   tool rows     what did it do?                      one plain line per call in the transcript
+//   tool rows     what did it do, what changed?        one call line, then only new information
 // The trail matters most under codemode, where browser calls inside a script get no rows.
 
-export type UiColor = "accent" | "success" | "warning" | "error" | "dim" | "muted" | "text" | "borderMuted";
+export type UiColor =
+  | "accent"
+  | "success"
+  | "warning"
+  | "error"
+  | "dim"
+  | "muted"
+  | "text"
+  | "borderMuted"
+  | "mdHeading"
+  | "mdLink";
 
 export interface UiTheme {
   fg(color: UiColor, text: string): string;
@@ -78,7 +90,9 @@ function joined(...parts: string[]): string {
 export function snapshotLabel(snapshot: string, ref: string): string | undefined {
   const id = ref.trim().replace(/^@+/, "");
   if (!/^[\w-]+$/.test(id)) return undefined;
-  const line = snapshot.split("\n").find((candidate) => candidate.includes(`[ref=${id}]`));
+  // Refs share the attribute bracket with others: `[ref=e2]` or `[level=1, ref=e1]`.
+  const pattern = new RegExp(`[\\[,\\s]ref=${id}[\\],]`);
+  const line = snapshot.split("\n").find((candidate) => pattern.test(candidate));
   const match = line?.match(/^\s*-\s*([\w-]+)(?:\s+"((?:[^"\\]|\\.)*)")?/);
   if (!match) return undefined;
   const label = match[2]?.replace(/\\(.)/g, "$1").trim();
@@ -114,7 +128,8 @@ export function describeActivity(
     case "click":
       return { text: joined("click", element(params.ref)), motion: "ripple" };
     case "find": {
-      const target = quote(params.value);
+      // A role locator names the element with `name`: `click button "Save changes"`.
+      const target = params.locator === "role" && typeof params.name === "string" ? joined(word(params.value), quote(params.name)) : quote(params.value);
       if (action === "fill" || action === "type") return { text: joined("type into", target), motion: "caret" };
       if (action === "hover" || action === "focus" || action === "check" || action === "uncheck") {
         return { text: joined(action, target), motion: "ripple" };
@@ -440,4 +455,447 @@ export class TrailWidget implements Component {
     clearTimeout(this.timer);
     this.timer = undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Results: only what the call line does not already say
+// ---------------------------------------------------------------------------
+
+// The call line says what was done and pi colours the row by success, so a result adds
+// what changed or what was learned. The model still receives the full tool output.
+
+export interface Fact {
+  text: string;
+  tone: UiColor;
+  href?: string;
+}
+
+export type BodyKind = "tree" | "markdown" | "console" | "network" | "a11y" | "vitals" | "code" | "text";
+
+/** Kept in the tool result's details so the transcript redraws the same after a resume. */
+export interface Presentation {
+  facts: Fact[];
+  /** Files worth opening, never the internal snapshot dumps. */
+  files: string[];
+  image?: string;
+  durationMs: number;
+  /** The agent-facing summary paragraph, which the expanded view leaves out. */
+  summary: string;
+  bodyKind: BodyKind;
+}
+
+export interface SnapshotView {
+  url?: string;
+  snapshot?: string;
+  /** False for scoped or delta snapshots, which cannot be compared with a whole page. */
+  comparable: boolean;
+}
+
+export interface ResultInput {
+  tool: string;
+  params: Record<string, unknown>;
+  /** Full text content the model receives: summary paragraph, then tool output. */
+  text: string;
+  details: Record<string, unknown>;
+  before: SnapshotView;
+  after: SnapshotView;
+  durationMs: number;
+  snapshotFiles: readonly string[];
+}
+
+const ELEMENT_LINE = /^\s*-\s*([\w-]+)(?:\s+"((?:[^"\\]|\\.)*)")?.*[[,\s]ref=[\w-]+[\],]/;
+
+/** Named elements that carry a ref: what the agent can act on, as `button "Save"`. */
+export function snapshotElements(snapshot: string): string[] {
+  return snapshot.split("\n").flatMap((line) => {
+    const match = line.match(ELEMENT_LINE);
+    if (!match) return [];
+    const name = match[2]?.replace(/\\(.)/g, "$1").trim();
+    return [name ? `${match[1]} "${clip(name, MAX_QUOTE)}"` : match[1]!];
+  });
+}
+
+/**
+ * Elements that appeared or disappeared between two snapshots. Only interactive elements
+ * carry refs, so text-only changes (a toast, a status line) are invisible here: an empty
+ * result means "no visible change in controls", never "nothing happened".
+ */
+export function snapshotChanges(before: string, after: string): { added: string[]; removed: string[] } {
+  const remaining = new Map<string, number>();
+  for (const element of snapshotElements(before)) remaining.set(element, (remaining.get(element) ?? 0) + 1);
+  const added: string[] = [];
+  for (const element of snapshotElements(after)) {
+    const left = remaining.get(element) ?? 0;
+    if (left > 0) remaining.set(element, left - 1);
+    else added.push(element);
+  }
+  const removed = [...remaining.entries()].flatMap(([element, count]) => Array<string>(count).fill(element));
+  return { added, removed };
+}
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+function seconds(ms: number): string {
+  return ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 1000)}s`;
+}
+
+function compactNumber(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+}
+
+function firstLine(text: string): string {
+  return text.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+}
+
+function lines(text: string): string[] {
+  return text.split("\n").filter((line) => line.trim());
+}
+
+const VITAL_LIMITS: Record<string, [good: number, poor: number]> = {
+  lcp: [2500, 4000],
+  fcp: [1800, 3000],
+  ttfb: [800, 1800],
+  inp: [200, 500],
+  cls: [0.1, 0.25],
+};
+
+function vitalValue(raw: string): number | undefined {
+  const match = raw.match(/^([\d.]+)(ms|s)?$/);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  return match[2] === "s" ? value * 1000 : value;
+}
+
+/** Google's Core Web Vitals bands: good, needs improvement, poor. */
+export function vitalTone(metric: string, raw: string): UiColor {
+  const limits = VITAL_LIMITS[metric.toLowerCase()];
+  const value = vitalValue(raw);
+  if (!limits || value === undefined) return "dim";
+  return value <= limits[0] ? "success" : value <= limits[1] ? "warning" : "error";
+}
+
+/** `ttfb: 0.4ms  fcp: 16ms  lcp: 16ms  cls: 0  inp: -` → LCP, CLS and INP, rated. */
+export function vitalsFacts(body: string): Fact[] {
+  return ["lcp", "cls", "inp"].map((metric) => {
+    const raw = body.match(new RegExp(`\\b${metric}:\\s*([\\d.]+(?:ms|s)?|-)`))?.[1] ?? "-";
+    return { text: `${metric.toUpperCase()} ${raw === "-" ? "–" : raw}`, tone: vitalTone(metric, raw) };
+  });
+}
+
+const NETWORK_LINE = /^\[([^\]]+)\]\s+(\S+)\s+(\S+)\s+\(([^)]+)\)\s+(\S+)\s*$/;
+
+function changeFacts(changes: { added: string[]; removed: string[] }): Fact[] {
+  const facts: Fact[] = [
+    ...changes.added.slice(0, 2).map((element) => ({ text: `+ ${element}`, tone: "success" as const })),
+    ...changes.removed.slice(0, 1).map((element) => ({ text: `− ${element}`, tone: "muted" as const })),
+  ];
+  const more = Math.max(0, changes.added.length - 2) + Math.max(0, changes.removed.length - 1);
+  if (more) facts.push({ text: `+${more} more`, tone: "dim" });
+  return facts;
+}
+
+function stringList(value: unknown): string[] {
+  if (typeof value === "string" && value) return [value];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item)) : [];
+}
+
+const BODY_KINDS: Record<string, BodyKind> = {
+  snapshot: "tree",
+  click: "tree",
+  find: "tree",
+  checkpoint: "tree",
+  read: "markdown",
+  a11y: "a11y",
+  vitals: "vitals",
+  eval: "code",
+};
+
+/**
+ * da-browser asks for axe results as JSON; this turns them into the CLI's own list,
+ * `[critical] image-alt: Images must have alternative text (1 node)`. Text input
+ * (or JSON cut short by truncation) passes through unchanged.
+ */
+export function a11yText(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  const violations = parsed && typeof parsed === "object" ? (parsed as { violations?: unknown }).violations : undefined;
+  if (!Array.isArray(violations)) return body;
+  return violations
+    .flatMap((violation) => {
+      if (!violation || typeof violation !== "object") return [];
+      const v = violation as { impact?: unknown; id?: unknown; help?: unknown; helpUrl?: unknown; nodes?: unknown };
+      const nodes = Array.isArray(v.nodes) ? v.nodes : [];
+      const targets = nodes.flatMap((node) => {
+        const target = node && typeof node === "object" ? (node as { target?: unknown }).target : undefined;
+        return Array.isArray(target) ? [`  - ${target.join(" ")}`] : [];
+      });
+      return [
+        `[${String(v.impact ?? "minor")}] ${String(v.id ?? "rule")}: ${String(v.help ?? "")} (${count(nodes.length, "node")})`,
+        ...(typeof v.helpUrl === "string" ? [`  ${v.helpUrl}`] : []),
+        ...targets,
+      ];
+    })
+    .join("\n");
+}
+
+/** Decides what a finished browser call adds to its transcript row. */
+export function presentResult(input: ResultInput): Presentation {
+  const name = input.tool.replace(/^browser_/, "");
+  const { params, details } = input;
+  const summary = input.text.split("\n\n")[0] ?? "";
+  const body = input.text.slice(summary.length).trim();
+  const facts: Fact[] = [];
+  const goTo = (url: string | undefined) => {
+    const address = formatAddress(url);
+    if (address) facts.push({ text: `→ ${address}`, tone: "muted", href: url });
+  };
+  const value = (text: string) => {
+    const line = firstLine(text);
+    if (!line) return;
+    facts.push({ text: line.length > 60 ? `${line.slice(0, 59)}…` : line, tone: "text" });
+    const more = lines(text).length - 1;
+    if (more > 0) facts.push({ text: `+${count(more, "line")}`, tone: "dim" });
+  };
+  let bodyKind: BodyKind = BODY_KINDS[name] ?? "text";
+
+  switch (name) {
+    case "open":
+    case "connect":
+    case "nav":
+      goTo(input.after.url);
+      break;
+    case "tab":
+      if (params.action === "list") facts.push({ text: count(lines(body).filter((line) => /\[t\d+\]/.test(line)).length, "tab"), tone: "muted" });
+      else if (params.action !== "close") goTo(input.after.url);
+      break;
+    case "click":
+    case "find":
+    case "fill":
+    case "select":
+    case "press":
+    case "scroll": {
+      if (input.after.url && input.after.url !== input.before.url) {
+        goTo(input.after.url);
+      } else if (input.before.comparable && input.after.comparable && input.before.snapshot && input.after.snapshot) {
+        facts.push(...changeFacts(snapshotChanges(input.before.snapshot, input.after.snapshot)));
+      }
+      break;
+    }
+    case "snapshot":
+      if (params.delta) {
+        facts.push(/^unchanged\b/i.test(body) ? { text: "no change", tone: "muted" } : { text: "changed", tone: "accent" });
+        bodyKind = "code";
+      } else {
+        facts.push({ text: count(snapshotElements(body).length, "element"), tone: "muted" });
+      }
+      break;
+    case "checkpoint": {
+      const ratio = typeof details.pixelChangeRatio === "number" ? ` ${Math.round(details.pixelChangeRatio * 100)}%` : "";
+      facts.push(details.changed === false ? { text: "unchanged", tone: "muted" } : { text: `changed${ratio}`, tone: "accent" });
+      break;
+    }
+    case "read": {
+      if (params.raw || params.json) {
+        bodyKind = params.json ? "code" : "text";
+        value(body);
+        break;
+      }
+      const title = body.match(/^#{1,2}\s+(.+)$/m)?.[1];
+      if (title) facts.push({ text: `"${clip(title, 40)}"`, tone: "text" });
+      facts.push({ text: `${compactNumber(body.match(/[\p{L}\p{N}]+/gu)?.length ?? 0)} words`, tone: "muted" });
+      break;
+    }
+    case "get":
+    case "eval":
+    case "command":
+    case "react":
+      value(body);
+      break;
+    case "is": {
+      const check = typeof params.check === "string" ? params.check : "true";
+      facts.push(details.result === true ? { text: check, tone: "success" } : { text: `not ${check}`, tone: "warning" });
+      break;
+    }
+    case "wait":
+      facts.push({ text: `after ${seconds(input.durationMs)}`, tone: "muted" });
+      break;
+    case "debug": {
+      const output = lines(body).filter((line) => line.trim() !== "(no output)");
+      if (params.kind === "console") {
+        bodyKind = "console";
+        const levels = (pattern: RegExp) => output.filter((line) => pattern.test(line)).length;
+        const errors = levels(/^\[error\]/);
+        const warnings = levels(/^\[warn(ing)?\]/);
+        const other = output.length - errors - warnings;
+        if (errors) facts.push({ text: count(errors, "error"), tone: "error" });
+        if (warnings) facts.push({ text: count(warnings, "warning"), tone: "warning" });
+        if (other) facts.push({ text: count(other, "log"), tone: "muted" });
+        if (!output.length) facts.push({ text: "no console output", tone: "muted" });
+      } else if (params.kind === "errors") {
+        bodyKind = "console";
+        const errors = output.filter((line) => line.replace(/^✗\s*/, "").trim()).length;
+        facts.push(errors ? { text: count(errors, "page error"), tone: "error" } : { text: "no page errors", tone: "success" });
+      } else if (params.kind === "network-requests") {
+        bodyKind = "network";
+        const requests = output.map((line) => line.match(NETWORK_LINE)).filter((match) => match !== null);
+        const failed = requests.filter((match) => !/^[123]\d\d$/.test(match[5]!)).length;
+        facts.push({ text: count(requests.length, "request"), tone: "muted" });
+        if (failed) facts.push({ text: `${failed} failed`, tone: "error" });
+      } else {
+        value(body);
+      }
+      break;
+    }
+    case "a11y": {
+      const counts = details.counts && typeof details.counts === "object" ? (details.counts as Record<string, unknown>) : {};
+      const listed = lines(a11yText(body));
+      const impacts = (impact: string) => listed.filter((line) => line.startsWith(`[${impact}]`)).length;
+      const violations = typeof counts.violations === "number" ? counts.violations : impacts("critical") + impacts("serious") + impacts("moderate") + impacts("minor");
+      const severe = impacts("critical") + impacts("serious");
+      if (!violations) {
+        facts.push({ text: "no violations", tone: "success" });
+        break;
+      }
+      facts.push({ text: count(violations, "violation"), tone: severe ? "error" : "warning" });
+      if (impacts("critical")) facts.push({ text: `${impacts("critical")} critical`, tone: "error" });
+      if (impacts("serious")) facts.push({ text: `${impacts("serious")} serious`, tone: "error" });
+      break;
+    }
+    case "vitals":
+      facts.push(...vitalsFacts(body));
+      break;
+    case "cookies":
+      if (typeof details.count === "number") facts.push({ text: `${count(details.count, "cookie")} saved`, tone: "success" });
+      break;
+    case "har":
+    case "trace":
+    case "record":
+      if (params.action !== "stop") facts.push({ text: name === "record" ? "recording" : "capturing", tone: "warning" });
+      break;
+    case "status": {
+      const probe = details.probe && typeof details.probe === "object" ? (details.probe as Record<string, unknown>) : undefined;
+      if (!probe) break;
+      facts.push(probe.portListening ? { text: "browser reachable", tone: "success" } : { text: "browser not reachable", tone: "error" });
+      if (typeof probe.pageTargets === "number") facts.push({ text: count(probe.pageTargets, "page"), tone: "muted" });
+      if (probe.tabBinding === "gone") facts.push({ text: "tab closed", tone: "warning" });
+      break;
+    }
+  }
+
+  const hidden = new Set([...input.snapshotFiles, ...stringList(details.snapshotFile)]);
+  const files = [
+    ...new Set([
+      ...stringList(details.screenshotFile),
+      ...stringList(details.artifacts),
+      ...stringList(details.fullOutputFile),
+      ...stringList(details.file),
+    ]),
+  ].filter((file) => !hidden.has(file));
+  const image = files.find((file) => /\.(png|jpe?g)$/i.test(file));
+
+  return { facts, files, image, durationMs: input.durationMs, summary, bodyKind };
+}
+
+/** `2026-10-02T03-12-45-123Z-after-click-e12.txt` → `after-click-e12.txt`. */
+export function artifactName(path: string): string {
+  const base = path.split("/").at(-1) ?? path;
+  return base.replace(/^\d{4}-\d{2}-\d{2}T[\d-]+Z-/, "");
+}
+
+/** The collapsed result: facts, then duration when slow, then files to open. */
+export function resultLine(theme: UiTheme, presentation: Presentation, options: { link?: boolean } = {}): string {
+  const link = options.link !== false;
+  const parts = presentation.facts.map((fact) => theme.fg(fact.tone, fact.href && link ? hyperlink(fact.text, fact.href) : fact.text));
+  const timed = presentation.facts.some((fact) => fact.text.startsWith("after "));
+  if (presentation.durationMs >= 1000 && !timed) parts.push(theme.fg("dim", seconds(presentation.durationMs)));
+  for (const file of presentation.files) {
+    const label = artifactName(file);
+    parts.push(theme.fg("dim", link ? hyperlink(label, pathToFileURL(file).href) : label));
+  }
+  return parts.join("  ");
+}
+
+/**
+ * Failures for a human: a short reason in red and the next step. The agent-facing
+ * message (relaunch commands, target ids) stays in the expanded view.
+ */
+export function explainFailure(text: string): { reason: string; hint?: string } {
+  // A failed CLI call reads `Command failed: agent-browser …` then `stderr:`; the reason
+  // is the stderr line, not the command.
+  const stderr = text.match(/\nstderr:\n([\s\S]*)$/)?.[1];
+  const first = (stderr ? firstLine(stderr) : firstLine(text)).replace(/^✗\s*/, "");
+  if (/^Unknown ref\b/i.test(first)) return { reason: first, hint: "refs go stale when the page changes; take a new snapshot" };
+  if (/^Arc is not reachable/.test(first)) return { reason: "Arc not reachable", hint: "relaunch Arc with remote debugging, then /browser connect" };
+  if (/pinned browser tab is gone/.test(first)) return { reason: "tab closed", hint: "/browser connect opens a fresh one" };
+  if (/page target disappeared/.test(first)) return { reason: "page went away", hint: "/browser connect opens a fresh tab" };
+  if (/did not respond in time/.test(first)) return { reason: "page busy", hint: "retry, or wait for a known element first" };
+  if (/requires agent-browser/i.test(text)) return { reason: "agent-browser too old", hint: "npm i -g agent-browser@latest" };
+  return { reason: first.length > 100 ? `${first.slice(0, 99)}…` : first || "failed" };
+}
+
+const INTERACTIVE_ROLES = new Set([
+  "button", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "slider", "spinbutton",
+  "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "option", "listbox", "treeitem",
+]);
+
+function treeLine(theme: UiTheme, line: string): string {
+  const match = line.match(/^(\s*-\s*)([\w-]+)(\s+"(?:[^"\\]|\\.)*")?(.*)$/);
+  if (!match) return theme.fg("muted", line);
+  const [, lead, role, name = "", rest = ""] = match;
+  const roleColor: UiColor = INTERACTIVE_ROLES.has(role!) ? "accent" : role === "link" ? "mdLink" : role === "heading" ? "mdHeading" : "dim";
+  const nameColor: UiColor = role === "StaticText" ? "muted" : "text";
+  return theme.fg("dim", lead!) + theme.fg(roleColor, role!) + theme.fg(nameColor, name) + theme.fg("dim", rest);
+}
+
+function consoleLine(theme: UiTheme, line: string): string {
+  if (/^\[error\]|^✗/.test(line)) return theme.fg("error", line);
+  if (/^\[warn(ing)?\]/.test(line)) return theme.fg("warning", line);
+  return theme.fg("muted", line);
+}
+
+function networkLine(theme: UiTheme, line: string): string {
+  const match = line.match(NETWORK_LINE);
+  if (!match) return theme.fg("muted", line);
+  const [, id, method, url, type, status] = match;
+  const tone: UiColor = /^2\d\d$/.test(status!) ? "success" : /^3\d\d$/.test(status!) ? "muted" : "error";
+  return `${theme.fg(tone, status!.padEnd(4))}${theme.fg("muted", method!.padEnd(7))}${theme.fg("text", url!)}  ${theme.fg("dim", `${type} ${id}`)}`;
+}
+
+function a11yLine(theme: UiTheme, line: string): string {
+  const impact = line.match(/^\[(critical|serious|moderate|minor)\]/)?.[1];
+  if (impact) return theme.fg(impact === "critical" || impact === "serious" ? "error" : impact === "moderate" ? "warning" : "muted", line);
+  if (/^\s+https?:\/\//.test(line)) return theme.fg("dim", line);
+  return theme.fg("muted", line);
+}
+
+function vitalsLine(theme: UiTheme, line: string): string {
+  return line
+    .split(/(\b(?:ttfb|fcp|lcp|cls|inp):\s*(?:[\d.]+(?:ms|s)?|-))/)
+    .map((part) => {
+      const metric = part.match(/^(ttfb|fcp|lcp|cls|inp):\s*(.+)$/);
+      return metric ? theme.fg("muted", `${metric[1]}: `) + theme.fg(vitalTone(metric[1]!, metric[2]!), metric[2]!) : theme.fg("dim", part);
+    })
+    .join("");
+}
+
+/** Colours a tool's raw output for the expanded view; markdown and code are drawn by pi. */
+export function formatBody(theme: UiTheme, kind: BodyKind, body: string): string {
+  const paint: Record<BodyKind, (line: string) => string> = {
+    tree: (line) => treeLine(theme, line),
+    console: (line) => consoleLine(theme, line),
+    network: (line) => networkLine(theme, line),
+    a11y: (line) => a11yLine(theme, line),
+    vitals: (line) => vitalsLine(theme, line),
+    markdown: (line) => line,
+    code: (line) => line,
+    text: (line) => theme.fg("muted", line),
+  };
+  const text = kind === "a11y" ? a11yText(body) : body;
+  return text.split("\n").map(paint[kind]).join("\n");
 }

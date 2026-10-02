@@ -213,12 +213,6 @@ export function connectionWord(health: ConnectionHealth): string {
   return "disconnected";
 }
 
-export function browserStatusText(state: BrowserState): string {
-  const health = connectionHealth(state);
-  const label = state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
-  return `${connectionGlyph(health)} ${label}`;
-}
-
 export function browserWidgetLines(state: BrowserState): string[] {
   const health = connectionHealth(state);
   const lines = [`${connectionGlyph(health)} browser  ${connectionWord(health)}`];

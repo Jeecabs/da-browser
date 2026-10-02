@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type, type TSchema } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 
@@ -48,9 +51,7 @@ import {
   type WaitArgsOptions,
 } from "./agent-browser.js";
 import {
-  browserStatusText,
   browserSummaryWithVersion,
-  connectionGlyph,
   connectionHealth,
   createBrowserState,
   mergeBrowserState,
@@ -60,6 +61,15 @@ import {
   type WaitMode,
 } from "./state.js";
 import { prepareCompatArguments } from "./extension-utils.js";
+import {
+  BrowserTrail,
+  browserCallLine,
+  browserChip,
+  describeActivity,
+  formatAddress,
+  snapshotLabel,
+  TrailWidget,
+} from "./browser-ui.js";
 import { renderCompactToolResult } from "./compact-tool-renderer.js";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
@@ -141,18 +151,34 @@ const BROWSER_GUIDELINES = [
 export default function (pi: ExtensionAPI) {
   let state = createBrowserState(process.cwd());
 
+  // The chip says where the browser is; the trail row shows each step as it runs; tool
+  // rows keep the same words in the transcript. See browser-ui.ts.
+  const trail = new BrowserTrail();
+  let trailWidget: TrailWidget | undefined;
+  const callTexts = new Map<string, string>();
+  let lastChip: string | undefined | null = null;
+
+  // Every snapshot is saved by snapshotBrowserPage, so the newest file is the one the
+  // model's @eN refs came from. Read it once per snapshot to name what is being clicked.
+  let snapshotCache: { file: string; text: string } | undefined;
+  const latestSnapshot = async (): Promise<string | undefined> => {
+    const file = state.lastSnapshotFile;
+    if (!file) return undefined;
+    if (snapshotCache?.file !== file) {
+      const text = await readFile(file, "utf8").catch(() => undefined);
+      if (text === undefined) return undefined;
+      snapshotCache = { file, text };
+    }
+    return snapshotCache.text;
+  };
+
   const refreshUi = (ctx: ExtensionContext): void => {
     if (!ctx.hasUI) return;
-    const t = ctx.ui.theme;
-    const health = connectionHealth(state);
-    const versionMismatch = state.agentBrowserCompatible === false;
-    const color = versionMismatch ? "warning" : health === "ok" ? "success" : health === "suspect" ? "warning" : "dim";
-    const dot = t.fg(color, connectionGlyph(health));
-    const browserLabel = state.tabGoneTargetId
-      ? "pinned tab gone"
-      : state.currentDomain ?? (state.connected ? `cdp:${state.port}` : "idle");
-    const label = versionMismatch ? `agent-browser ${state.agentBrowserVersion ?? "missing"}` : browserLabel;
-    ctx.ui.setStatus("browser-ops", `${dot} ${t.fg("muted", label)}`);
+    // Each setStatus makes Lohan's Land re-layout the whole footer, so only send changes.
+    const chip = browserChip(ctx.ui.theme, state, connectionHealth(state));
+    if (chip === lastChip) return;
+    lastChip = chip;
+    ctx.ui.setStatus("browser-ops", chip);
   };
 
   const persistCommandState = (): void => {
@@ -186,7 +212,33 @@ export default function (pi: ExtensionAPI) {
   const registerBrowserTool = <TParams extends TSchema, TDetails = unknown, TState = unknown>(
     tool: ToolDefinition<TParams, TDetails, TState>,
   ): void => {
-    pi.registerTool({ renderResult: renderCompactToolResult, ...tool });
+    pi.registerTool({
+      renderResult: renderCompactToolResult,
+      renderCall: (args, theme, context) => {
+        const text = callTexts.get(context.toolCallId) ?? describeActivity(tool.name, args as Record<string, unknown>).text;
+        const line = browserCallLine(theme, text);
+        return new Text(context.expanded ? `${line}\n${theme.fg("dim", `${tool.name} ${JSON.stringify(args)}`)}` : line, 0, 0);
+      },
+      ...tool,
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const snapshot = await latestSnapshot();
+        const labelFor = (ref: string) => (snapshot ? snapshotLabel(snapshot, ref) : undefined);
+        const activity = describeActivity(tool.name, params as Record<string, unknown>, labelFor);
+        callTexts.set(toolCallId, activity.text);
+        trail.begin(toolCallId, activity);
+        trailWidget?.poke();
+        let ok = false;
+        try {
+          const result = await tool.execute(toolCallId, params, signal, onUpdate, ctx);
+          ok = true;
+          return result;
+        } finally {
+          trail.end(toolCallId, ok);
+          trailWidget?.poke();
+          refreshUi(ctx);
+        }
+      },
+    });
   };
 
   const loadStateFromSession = (ctx: ExtensionContext): void => {
@@ -210,6 +262,18 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     loadStateFromSession(ctx);
+    callTexts.clear();
+    trail.reset();
+    lastChip = null;
+    if (ctx.hasUI) {
+      // Mounted once so the row keeps its place among the widgets above the editor; it
+      // renders nothing until the agent touches the browser.
+      ctx.ui.setWidget("da-browser-trail", (tui, theme) => {
+        trailWidget?.dispose();
+        trailWidget = new TrailWidget(tui, theme, trail, () => formatAddress(state.currentUrl));
+        return trailWidget;
+      });
+    }
     // Probe both the CLI version and CDP port on every start. Persisted compatibility can
     // be stale after either da-browser or the globally installed CLI changes.
     try {
@@ -228,6 +292,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
+    trailWidget?.dispose();
     await cleanupBrowserArtifacts(state);
   });
 

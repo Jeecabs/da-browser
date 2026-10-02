@@ -25,6 +25,7 @@
   },
   "scripts": {
     "preview:control": "node --experimental-strip-types scripts/preview-controlled-tab.mjs",
+    "preview:tui": "node --experimental-strip-types scripts/preview-tui.mjs",
     "check": "tsc --noEmit",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "test:e2e": "node --test --experimental-strip-types tests/pin-tab.e2e.ts"
@@ -38,13 +39,13 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.78.1",
-    "@earendil-works/pi-ai": "^0.78.1",
-    "@earendil-works/pi-coding-agent": "^0.79.0",
-    "@earendil-works/pi-tui": "^0.78.1",
+    "@earendil-works/pi-agent-core": "^1.0.0",
+    "@earendil-works/pi-ai": "^1.0.0",
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@earendil-works/pi-tui": "^1.0.0",
     "@types/node": "^24.3.0",
     "typescript": "^5.9.2",
-    "typebox": "1.1.38"
+    "typebox": "1.3.27"
   },
   "pnpm": {
     "overrides": {

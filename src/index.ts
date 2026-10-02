@@ -67,10 +67,11 @@ import {
   browserChip,
   describeActivity,
   formatAddress,
+  presentResult,
   snapshotLabel,
   TrailWidget,
 } from "./browser-ui.js";
-import { renderCompactToolResult } from "./compact-tool-renderer.js";
+import { renderBrowserResult } from "./browser-result-renderer.js";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
 const SCROLL_DIRECTION_SCHEMA = StringEnum(["up", "down", "left", "right"] as const);
@@ -161,6 +162,10 @@ export default function (pi: ExtensionAPI) {
   // Every snapshot is saved by snapshotBrowserPage, so the newest file is the one the
   // model's @eN refs came from. Read it once per snapshot to name what is being clicked.
   let snapshotCache: { file: string; text: string } | undefined;
+  // Scoped and delta snapshots describe part of a page, and a snapshot of another URL
+  // describes another page; neither is diffed.
+  let snapshotComparable = false;
+  let snapshotUrl: string | undefined;
   const latestSnapshot = async (): Promise<string | undefined> => {
     const file = state.lastSnapshotFile;
     if (!file) return undefined;
@@ -213,7 +218,7 @@ export default function (pi: ExtensionAPI) {
     tool: ToolDefinition<TParams, TDetails, TState>,
   ): void => {
     pi.registerTool({
-      renderResult: renderCompactToolResult,
+      renderResult: renderBrowserResult,
       renderCall: (args, theme, context) => {
         const text = callTexts.get(context.toolCallId) ?? describeActivity(tool.name, args as Record<string, unknown>).text;
         const line = browserCallLine(theme, text);
@@ -221,17 +226,45 @@ export default function (pi: ExtensionAPI) {
       },
       ...tool,
       async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const input = params as Record<string, unknown>;
         const snapshot = await latestSnapshot();
+        const before = { url: state.currentUrl, snapshot, comparable: snapshotComparable && snapshotUrl === state.currentUrl };
+        const snapshotFileBefore = state.lastSnapshotFile;
         const labelFor = (ref: string) => (snapshot ? snapshotLabel(snapshot, ref) : undefined);
-        const activity = describeActivity(tool.name, params as Record<string, unknown>, labelFor);
+        const activity = describeActivity(tool.name, input, labelFor);
         callTexts.set(toolCallId, activity.text);
         trail.begin(toolCallId, activity);
         trailWidget?.poke();
+        const startedAt = Date.now();
         let ok = false;
         try {
           const result = await tool.execute(toolCallId, params, signal, onUpdate, ctx);
           ok = true;
-          return result;
+
+          const freshSnapshot = state.lastSnapshotFile !== snapshotFileBefore;
+          if (freshSnapshot) {
+            const partial = Boolean(input.selector || input.depth || input.delta);
+            snapshotComparable = !((tool.name === "browser_snapshot" || tool.name === "browser_checkpoint") && partial);
+            snapshotUrl = state.currentUrl;
+          }
+          const after = {
+            url: state.currentUrl,
+            snapshot: freshSnapshot ? await latestSnapshot() : undefined,
+            comparable: snapshotComparable,
+          };
+          const details = result.details && typeof result.details === "object" ? (result.details as Record<string, unknown>) : {};
+          const text = result.content.find((block) => block.type === "text");
+          const presentation = presentResult({
+            tool: tool.name,
+            params: input,
+            text: text?.type === "text" ? text.text : "",
+            details,
+            before,
+            after,
+            durationMs: Date.now() - startedAt,
+            snapshotFiles: [snapshotFileBefore, state.lastSnapshotFile].filter((file): file is string => Boolean(file)),
+          });
+          return { ...result, details: { ...details, presentation } as TDetails };
         } finally {
           trail.end(toolCallId, ok);
           trailWidget?.poke();
@@ -265,6 +298,9 @@ export default function (pi: ExtensionAPI) {
     callTexts.clear();
     trail.reset();
     lastChip = null;
+    snapshotCache = undefined;
+    snapshotComparable = false;
+    snapshotUrl = undefined;
     if (ctx.hasUI) {
       // Mounted once so the row keeps its place among the widgets above the editor; it
       // renders nothing until the agent touches the browser.

@@ -3,10 +3,17 @@ import { describe, it } from "node:test";
 
 import { connectionHealth, createBrowserState } from "../src/state.ts";
 import {
+    a11yText,
+    artifactName,
     BrowserTrail,
     browserChip,
     describeActivity,
+    explainFailure,
     formatAddress,
+    formatBody,
+    presentResult,
+    resultLine,
+    snapshotChanges,
     snapshotLabel,
     TRAIL_TIMING,
 } from "../src/browser-ui.ts";
@@ -152,8 +159,9 @@ describe("describeActivity", () => {
 
 describe("snapshotLabel", () => {
     it("reads names, falls back to roles, and ignores unknown refs", () => {
-        const snapshot = '- link "Say \\"hi\\"" [ref=e4]\n- textbox [ref=e3]';
+        const snapshot = '- link "Say \\"hi\\"" [ref=e4]\n- textbox [ref=e3]\n- heading "Settings" [level=1, ref=e1]';
         assert.equal(snapshotLabel(snapshot, "e4"), '"Say "hi""');
+        assert.equal(snapshotLabel(snapshot, "@e1"), '"Settings"');
         assert.equal(snapshotLabel(snapshot, "@e3"), "textbox");
         assert.equal(snapshotLabel(snapshot, "@e99"), undefined);
         assert.equal(snapshotLabel(snapshot, "@e1]"), undefined);
@@ -173,5 +181,205 @@ describe("formatAddress", () => {
     it("ignores pages without a host", () => {
         assert.equal(formatAddress("about:blank"), undefined);
         assert.equal(formatAddress(undefined), undefined);
+    });
+});
+
+// Fixtures are real agent-browser 0.38.1 output from a local probe page.
+const SNAPSHOT_BEFORE = [
+    '- heading "Settings" [level=1, ref=e1]',
+    '- textbox "Display name" [ref=e3]',
+    '- button "Save changes" [ref=e2]',
+].join("\n");
+const SNAPSHOT_AFTER = [
+    '- heading "Settings" [level=1, ref=e1]',
+    '- textbox "Display name" [ref=e3]',
+    '- dialog "Confirm" [ref=e4]',
+    '- button "Discard" [ref=e5]',
+    '- button "Keep editing" [ref=e6]',
+].join("\n");
+const NETWORK = [
+    "[6A73FF49] GET http://127.0.0.1:8765/ (Document) 200",
+    "[84879.2] GET http://127.0.0.1:8765/missing.png (Image) 404",
+    "[84879.4] GET http://127.0.0.1:8765/api.json (Fetch) 200",
+    "[84879.5] GET http://127.0.0.1:8765/nope (Fetch) 404",
+].join("\n");
+const VITALS = "url: http://127.0.0.1:8765/\nttfb: 0.4ms  fcp: 16ms  lcp: 3.1s  cls: 0.3  inp: -\nlcp: element: h1";
+const A11Y = [
+    "url: http://127.0.0.1:8765/",
+    "axe-core: 4.12.1  violations: 4  incomplete: 0  passes: 17",
+    "",
+    "[serious] html-has-lang: <html> element must have a lang attribute (1 node)",
+    "[critical] image-alt: Images must have alternative text (1 node)",
+    "[moderate] region: All page content should be contained by landmarks (3 nodes)",
+].join("\n");
+
+const view = (url: string, snapshot?: string, comparable = true) => ({ url, snapshot, comparable });
+const present = (tool: string, overrides: Partial<Parameters<typeof presentResult>[0]> = {}) =>
+    presentResult({
+        tool,
+        params: {},
+        text: "Summary.",
+        details: {},
+        before: view("http://app.test/a"),
+        after: view("http://app.test/a"),
+        durationMs: 200,
+        snapshotFiles: [],
+        ...overrides,
+    });
+const facts = (presentation: ReturnType<typeof presentResult>) => presentation.facts.map((fact) => `${fact.tone}:${fact.text}`);
+
+describe("snapshotChanges", () => {
+    it("reports controls that appeared and disappeared, ignoring refs", () => {
+        assert.deepEqual(snapshotChanges(SNAPSHOT_BEFORE, SNAPSHOT_AFTER), {
+            added: ['dialog "Confirm"', 'button "Discard"', 'button "Keep editing"'],
+            removed: ['button "Save changes"'],
+        });
+    });
+
+    it("sees no change when only text changed, which is why it never claims nothing happened", () => {
+        assert.deepEqual(snapshotChanges(SNAPSHOT_BEFORE, SNAPSHOT_BEFORE.replace("ref=e2", "ref=e9")), { added: [], removed: [] });
+    });
+});
+
+describe("presentResult", () => {
+    it("shows what a click changed", () => {
+        const result = present("browser_click", {
+            before: view("http://app.test/a", SNAPSHOT_BEFORE),
+            after: view("http://app.test/a", SNAPSHOT_AFTER),
+        });
+        assert.deepEqual(facts(result), ['success:+ dialog "Confirm"', 'success:+ button "Discard"', 'muted:− button "Save changes"', "dim:+1 more"]);
+    });
+
+    it("prefers navigation over a diff, and says nothing when nothing visible changed", () => {
+        const navigated = present("browser_click", { after: view("https://linear.app/acme/issue/ENG-42", SNAPSHOT_AFTER) });
+        assert.deepEqual(facts(navigated), ["muted:→ linear.app/acme/issue/ENG-42"]);
+        assert.equal(navigated.facts[0]!.href, "https://linear.app/acme/issue/ENG-42");
+        const quiet = present("browser_click", { before: view("http://app.test/a", SNAPSHOT_BEFORE), after: view("http://app.test/a", SNAPSHOT_BEFORE) });
+        assert.deepEqual(facts(quiet), []);
+    });
+
+    it("never diffs scoped snapshots", () => {
+        const scoped = present("browser_click", { before: view("http://app.test/a", SNAPSHOT_BEFORE, false), after: view("http://app.test/a", SNAPSHOT_AFTER) });
+        assert.deepEqual(facts(scoped), []);
+    });
+
+    it("counts requests and failures", () => {
+        const result = present("browser_debug", { params: { kind: "network-requests" }, text: `Collected browser network-requests.\n\n${NETWORK}` });
+        assert.deepEqual(facts(result), ["muted:4 requests", "error:2 failed"]);
+        assert.equal(result.bodyKind, "network");
+    });
+
+    it("counts console levels", () => {
+        const result = present("browser_debug", { params: { kind: "console" }, text: "Collected browser console.\n\n[log] hello log\n[warning] careful\n[error] boom" });
+        assert.deepEqual(facts(result), ["error:1 error", "warning:1 warning", "muted:1 log"]);
+    });
+
+    it("rates web vitals against Google's bands", () => {
+        const result = present("browser_vitals", { text: `Measured web vitals.\n\n${VITALS}` });
+        assert.deepEqual(facts(result), ["warning:LCP 3.1s", "error:CLS 0.3", "dim:INP –"]);
+    });
+
+    it("summarises accessibility audits by severity", () => {
+        const result = present("browser_a11y", { text: `Accessibility audit.\n\n${A11Y}`, details: { counts: { violations: 4 } } });
+        assert.deepEqual(facts(result), ["error:4 violations", "error:1 critical", "error:1 serious"]);
+        assert.deepEqual(facts(present("browser_a11y", { details: { counts: { violations: 0 } } })), ["success:no violations"]);
+    });
+
+    it("gives values, titles and booleans directly", () => {
+        assert.deepEqual(facts(present("browser_get", { text: "Read browser title.\n\nProbe page" })), ["text:Probe page"]);
+        assert.deepEqual(facts(present("browser_is", { params: { check: "visible" }, details: { result: false } })), ["warning:not visible"]);
+        const read = present("browser_read", { text: "Read page.\n\n# Getting started\n\nInstall the thing and run it." });
+        assert.deepEqual(facts(read), ['text:"Getting started"', "muted:8 words"]);
+        assert.equal(read.bodyKind, "markdown");
+    });
+
+    it("lists files worth opening and keeps snapshot dumps out", () => {
+        const result = present("browser_checkpoint", {
+            details: {
+                changed: true,
+                pixelChangeRatio: 0.12,
+                screenshotFile: "/tmp/da-browser/x/2026-10-02T03-12-45-123Z-after-save.png",
+                artifacts: ["/tmp/da-browser/x/2026-10-02T03-12-45-123Z-after-save.png", "/tmp/da-browser/x/snap.txt"],
+            },
+            snapshotFiles: ["/tmp/da-browser/x/snap.txt"],
+        });
+        assert.deepEqual(facts(result), ["accent:changed 12%"]);
+        assert.deepEqual(result.files, ["/tmp/da-browser/x/2026-10-02T03-12-45-123Z-after-save.png"]);
+        assert.equal(result.image, result.files[0]);
+    });
+});
+
+describe("resultLine", () => {
+    it("joins facts, slow durations and short file names", () => {
+        const presentation = {
+            facts: [{ text: "17 cookies saved", tone: "success" as const }],
+            files: ["/tmp/da-browser/x/2026-10-02T03-12-45-123Z-cookies.json"],
+            durationMs: 2400,
+            summary: "",
+            bodyKind: "text" as const,
+        };
+        assert.equal(resultLine(theme, presentation, { link: false }), "[success:17 cookies saved]  [dim:2.4s]  [dim:cookies.json]");
+        assert.match(resultLine(plain, presentation), /\x1b\]8;;file:\/\/\/tmp\/da-browser\/x\/2026-10-02T03-12-45-123Z-cookies\.json/);
+    });
+
+    it("is empty for a quick plain success", () => {
+        assert.equal(resultLine(theme, { facts: [], files: [], durationMs: 120, summary: "", bodyKind: "text" }), "");
+    });
+});
+
+describe("explainFailure", () => {
+    it("turns agent-facing recovery text into a reason and a next step", () => {
+        assert.deepEqual(explainFailure("The pinned browser tab is gone. Strict tab isolation prevented…\nRecover explicitly with browser_tab"), {
+            reason: "tab closed",
+            hint: "/browser connect opens a fresh one",
+        });
+        assert.equal(explainFailure("Arc is not reachable on CDP port 9222.\nQuit Arc and relaunch it with:").reason, "Arc not reachable");
+        assert.deepEqual(explainFailure("Element @e9 not found"), { reason: "Element @e9 not found" });
+    });
+});
+
+describe("formatBody", () => {
+    it("colours snapshot trees by role", () => {
+        assert.equal(
+            formatBody(theme, "tree", '- button "Save changes" [ref=e2]'),
+            '[dim:- ][accent:button][text: "Save changes"][dim: [ref=e2]]',
+        );
+    });
+
+    it("lays out network requests by status", () => {
+        assert.equal(
+            formatBody(theme, "network", "[84879.5] GET http://127.0.0.1:8765/nope (Fetch) 404"),
+            "[error:404 ][muted:GET    ][text:http://127.0.0.1:8765/nope]  [dim:Fetch 84879.5]",
+        );
+    });
+});
+
+describe("artifactName", () => {
+    it("drops the timestamp prefix", () => {
+        assert.equal(artifactName("/tmp/da-browser/x/2026-10-02T03-12-45-123Z-after-click-e12.txt"), "after-click-e12.txt");
+    });
+});
+
+describe("fixes from a real-browser run", () => {
+    it("names role lookups by their accessible name", () => {
+        assert.equal(describeActivity("browser_find", { locator: "role", value: "button", name: "Save changes", action: "click" }).text, 'click button "Save changes"');
+    });
+
+    it("reads da-browser's JSON axe results", () => {
+        const json = JSON.stringify({
+            counts: { violations: 2 },
+            violations: [
+                { id: "image-alt", impact: "critical", help: "Images must have alternative text", helpUrl: "https://x/image-alt", nodes: [{ target: ["img"], impact: "critical" }] },
+                { id: "region", impact: "moderate", help: "All page content should be contained by landmarks", nodes: [{ target: ["h1"] }, { target: ["img"] }] },
+            ],
+        });
+        const result = present("browser_a11y", { text: `Accessibility audit: 2 violations.\n\n${json}`, details: { counts: { violations: 2 } } });
+        assert.deepEqual(facts(result), ["error:2 violations", "error:1 critical"]);
+        assert.match(a11yText(json), /^\[critical\] image-alt: Images must have alternative text \(1 node\)\n  https:\/\/x\/image-alt\n  - img\n\[moderate\] region/);
+    });
+
+    it("explains CLI failures by their stderr, not the command line", () => {
+        const text = "Command failed: agent-browser --namespace da-browser --session pi-1 --pin-tab --cdp 9222 click @e99\nExit code: 1\nstderr:\n✗ Unknown ref: e99";
+        assert.deepEqual(explainFailure(text), { reason: "Unknown ref: e99", hint: "refs go stale when the page changes; take a new snapshot" });
     });
 });

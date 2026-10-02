@@ -9,12 +9,12 @@ function expandHint(): string {
   }
 }
 
-function firstTextContent(result: AgentToolResult<unknown>): string {
+export function firstTextContent(result: AgentToolResult<unknown>): string {
   const block = result.content.find((item) => item.type === "text");
   return block?.type === "text" ? block.text : "";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 

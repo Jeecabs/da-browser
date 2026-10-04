@@ -467,7 +467,10 @@ export const register: Register = on => {
   // Raw agent-browser over CDP skips the per-session pin and can take over another
   // session's tab. Version checks and other non-attaching commands still run.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const attaches = /\bagent-browser\b[^|;&]*(--cdp\b|--auto-connect\b|\sconnect\b)/.test(e.command)
+    // Only where agent-browser runs as a command (line start, or after ; & | ( ), so a
+    // commit message or PR body that merely mentions it is not refused.
+    const attaches =
+      /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(e.command)
     if (!attaches) return next(e)
     return {
       deny: `${PLUGIN}: agent-browser over CDP from Bash bypasses this session's pinned tab. Use the ${PREFIX}browser_* tools (browser_connect, browser_open, browser_snapshot, ...) instead.`,

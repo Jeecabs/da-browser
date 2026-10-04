@@ -49,7 +49,7 @@ import {
   type SetSetting,
   type TabAction,
   type WaitArgsOptions,
-} from "./agent-browser.js";
+} from "./agent-browser.ts";
 import {
   browserSummaryWithVersion,
   connectionHealth,
@@ -59,8 +59,9 @@ import {
   serializeBrowserState,
   type BrowserState,
   type WaitMode,
-} from "./state.js";
-import { prepareCompatArguments } from "./extension-utils.js";
+} from "./state.ts";
+import { prepareCompatArguments } from "./extension-utils.ts";
+import { piHost } from "./pi-host.ts";
 import {
   BrowserTrail,
   browserCallLine,
@@ -70,8 +71,8 @@ import {
   presentResult,
   snapshotLabel,
   TrailWidget,
-} from "./browser-ui.js";
-import { renderBrowserResult } from "./browser-result-renderer.js";
+} from "./browser-ui.ts";
+import { renderBrowserResult } from "./browser-result-renderer.ts";
 
 const WAIT_MODE_SCHEMA = StringEnum(["none", "load", "networkidle"] as const);
 const SCROLL_DIRECTION_SCHEMA = StringEnum(["up", "down", "left", "right"] as const);
@@ -313,7 +314,7 @@ export default function (pi: ExtensionAPI) {
     // Probe both the CLI version and CDP port on every start. Persisted compatibility can
     // be stale after either da-browser or the globally installed CLI changes.
     try {
-      const probe = await verifyConnection(pi, state, ctx);
+      const probe = await verifyConnection(piHost(pi, ctx), state);
       if (!probe.agentBrowserCompatible && ctx.hasUI) {
         const installed = probe.agentBrowserVersion ?? "not found";
         ctx.ui.notify(
@@ -349,14 +350,14 @@ export default function (pi: ExtensionAPI) {
           const portArg = Number(tokens[0]);
           if (Number.isInteger(portArg) && portArg > 0) state.port = resolveBrowserPort(portArg);
 
-          const result = await connectBrowser(pi, state, ctx);
+          const result = await connectBrowser(piHost(pi, ctx), state);
           applyActionResult(result, ctx);
           persistCommandState();
           return;
         }
 
         if (subcommand === "status") {
-          const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
+          const probe = await verifyConnection(piHost(pi, ctx), state).catch(() => undefined);
           refreshUi(ctx);
           persistCommandState();
           ctx.ui.notify(browserSummaryWithVersion(state, probe), "info");
@@ -388,7 +389,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: BROWSER_GUIDELINES,
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const probe = await verifyConnection(pi, state, ctx).catch(() => undefined);
+      const probe = await verifyConnection(piHost(pi, ctx), state).catch(() => undefined);
       refreshUi(ctx);
       return {
         content: [{ type: "text", text: browserSummaryWithVersion(state, probe) }],
@@ -421,7 +422,7 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       try {
         if (typeof _params.port === "number") state.port = resolveBrowserPort(_params.port);
-        const result = await connectBrowser(pi, state, ctx);
+        const result = await connectBrowser(piHost(pi, ctx), state);
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -453,7 +454,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await openBrowserPage(pi, state, ctx, params.url, (params.waitMode ?? "networkidle") as WaitMode, {
+        const result = await openBrowserPage(piHost(pi, ctx), state, params.url, (params.waitMode ?? "networkidle") as WaitMode, {
           enableReactDevtools: params.enableReactDevtools,
         });
         refreshUi(ctx);
@@ -495,9 +496,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await snapshotBrowserPage(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.interactiveOnly ?? true,
           params.label ?? "snapshot",
           {
@@ -558,7 +558,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await readBrowserContent(pi, state, ctx, params as ReadArgsOptions & { label?: string });
+        const result = await readBrowserContent(piHost(pi, ctx), state, params as ReadArgsOptions & { label?: string });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -595,9 +595,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await clickBrowserElement(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.ref,
           (params.waitMode ?? "networkidle") as WaitMode,
           params.resnapshot ?? true,
@@ -643,7 +642,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await findBrowserElement(pi, state, ctx, {
+        const result = await findBrowserElement(piHost(pi, ctx), state, {
           locator: params.locator as string,
           value: params.value,
           action: params.action as FindAction,
@@ -685,9 +684,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await fillBrowserElement(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.ref,
           params.text,
           (params.waitMode ?? "none") as WaitMode,
@@ -723,9 +721,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await selectBrowserOption(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.ref,
           params.option,
           (params.waitMode ?? "none") as WaitMode,
@@ -755,7 +752,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await pressBrowserKey(pi, state, ctx, params.key, (params.waitMode ?? "none") as WaitMode);
+        const result = await pressBrowserKey(piHost(pi, ctx), state, params.key, (params.waitMode ?? "none") as WaitMode);
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -787,9 +784,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await scrollBrowserPage(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.direction as "up" | "down" | "left" | "right",
           params.pixels,
           (params.waitMode ?? "none") as WaitMode,
@@ -836,7 +832,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await waitInBrowser(pi, state, ctx, params as WaitArgsOptions);
+        const result = await waitInBrowser(piHost(pi, ctx), state, params as WaitArgsOptions);
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -860,9 +856,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await navigateBrowser(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.action as "back" | "forward" | "reload" | "pushstate",
           (params.waitMode ?? "networkidle") as WaitMode,
           params.url,
@@ -896,9 +891,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await getBrowserInfo(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.what as BrowserGetWhat,
           params.selector,
           params.attrName,
@@ -938,9 +932,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await debugBrowserPage(
-          pi,
+          piHost(pi, ctx),
           state,
-          ctx,
           params.kind as "console" | "errors" | "network-requests" | "network-request",
           {
             clear: params.clear,
@@ -980,7 +973,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await runBrowserCommand(pi, state, ctx, params.args, params.timeoutMs, params.label ?? "command");
+        const result = await runBrowserCommand(piHost(pi, ctx), state, params.args, params.timeoutMs, params.label ?? "command");
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -1000,7 +993,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await evalInBrowser(pi, state, ctx, params.script, params.label ?? "eval");
+        const result = await evalInBrowser(piHost(pi, ctx), state, params.script, params.label ?? "eval");
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -1035,7 +1028,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await tabBrowser(pi, state, ctx, {
+        const result = await tabBrowser(piHost(pi, ctx), state, {
           action: params.action as TabAction,
           url: params.url,
           label: params.label,
@@ -1066,7 +1059,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await isBrowserState(pi, state, ctx, {
+        const result = await isBrowserState(piHost(pi, ctx), state, {
           check: params.check as IsCheck,
           selector: params.selector,
         });
@@ -1111,7 +1104,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await setBrowser(pi, state, ctx, {
+        const result = await setBrowser(piHost(pi, ctx), state, {
           setting: params.setting as SetSetting,
           width: params.width,
           height: params.height,
@@ -1153,7 +1146,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await harBrowser(pi, state, ctx, {
+        const result = await harBrowser(piHost(pi, ctx), state, {
           action: params.action as CaptureAction,
           content: params.content as HarContentMode | undefined,
           label: params.label,
@@ -1181,7 +1174,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await exportCookies(pi, state, ctx, { path: params.path, label: params.label });
+        const result = await exportCookies(piHost(pi, ctx), state, { path: params.path, label: params.label });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -1219,7 +1212,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await recordBrowser(pi, state, ctx, {
+        const result = await recordBrowser(piHost(pi, ctx), state, {
           action: params.action as RecordAction,
           label: params.label,
           format: params.format as "webm" | "mp4" | undefined,
@@ -1248,7 +1241,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await traceBrowser(pi, state, ctx, {
+        const result = await traceBrowser(piHost(pi, ctx), state, {
           action: params.action as CaptureAction,
           label: params.label,
         });
@@ -1288,7 +1281,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await checkpointBrowserPage(pi, state, ctx, params.label, {
+        const result = await checkpointBrowserPage(piHost(pi, ctx), state, params.label, {
           annotate: params.annotate,
           ifChanged: params.ifChanged,
           threshold: params.threshold,
@@ -1324,7 +1317,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await reactBrowser(pi, state, ctx, {
+        const result = await reactBrowser(piHost(pi, ctx), state, {
           command: params.command as ReactCommand,
           fiberId: params.fiberId,
           onlyDynamic: params.onlyDynamic,
@@ -1367,7 +1360,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await auditAccessibility(pi, state, ctx, params as A11yArgsOptions & { label?: string });
+        const result = await auditAccessibility(piHost(pi, ctx), state, params as A11yArgsOptions & { label?: string });
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {
@@ -1388,7 +1381,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
-        const result = await vitalsBrowser(pi, state, ctx, params.url);
+        const result = await vitalsBrowser(piHost(pi, ctx), state, params.url);
         refreshUi(ctx);
         return toolResponse(result);
       } catch (error) {

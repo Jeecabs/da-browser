@@ -10,8 +10,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, hyperlink, Image, Markdown, Text, type Component } from "@earendil-works/pi-tui";
 
-import { explainFailure, formatBody, resultLine, type Presentation } from "./browser-ui.js";
-import { firstTextContent, isRecord, renderCompactToolResult } from "./compact-tool-renderer.js";
+import { explainFailure, formatBody, resultLine, type Presentation } from "./browser-ui.ts";
+import { firstTextContent, isRecord, renderCompactToolResult } from "./compact-tool-renderer.ts";
 
 function presentationOf(details: unknown): Presentation | undefined {
   if (!isRecord(details) || !isRecord(details.presentation)) return undefined;

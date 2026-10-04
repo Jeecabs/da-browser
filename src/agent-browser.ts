@@ -1,14 +1,12 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BrowserHost, ExecResult } from "./host.ts";
+import { dirname, join, resolve } from "./paths.ts";
 
 import {
   extractAgentBrowserVersion,
   MIN_AGENT_BROWSER_VERSION,
   supportsAgentBrowserVersion,
-} from "./agent-browser-version.js";
+} from "./agent-browser-version.ts";
 import {
   agentBrowserSessionName,
   buildA11yArgs,
@@ -40,7 +38,7 @@ import {
   type SnapshotArgsOptions,
   type TabArgsOptions,
   type WaitArgsOptions,
-} from "./agent-browser-args.js";
+} from "./agent-browser-args.ts";
 import {
   AgentBrowserCliError,
   extractBooleanResult,
@@ -54,7 +52,7 @@ import {
   normalizeTabList,
   unwrapCliEnvelope,
   type BrowserGetWhat,
-} from "./agent-browser-output.js";
+} from "./agent-browser-output.ts";
 import {
   arcRelaunchCommand,
   CdpError,
@@ -62,13 +60,13 @@ import {
   extractTabGoneDetails,
   friendlyCdpMessage,
   sanitizeTabRecoveryUrl,
-} from "./cdp-errors.js";
+} from "./cdp-errors.ts";
 import {
   controlledTabLabel,
   controlledTabMarkScript,
   CONTROLLED_TAB_CLEAR_SCRIPT,
-} from "./controlled-tab.js";
-import type { BrowserState, ConnectionProbe, WaitMode } from "./state.js";
+} from "./controlled-tab.ts";
+import type { BrowserState, ConnectionProbe, WaitMode } from "./state.ts";
 import {
   domainFromUrl,
   isLocalUrl,
@@ -78,8 +76,8 @@ import {
   resolveControlBannerEnabled,
   sanitizeArtifactLabel,
   tabBindingStatus,
-} from "./state.js";
-import { formatToolText } from "./tool-output.js";
+} from "./state.ts";
+import { formatToolText } from "./tool-output.ts";
 
 export {
   buildFindArgs,
@@ -96,10 +94,10 @@ export {
   CdpError,
   contactSheetPath,
 };
-export { FIND_ACTIONS, normalizeTabRef } from "./agent-browser-args.js";
-export { unwrapCliEnvelope, AgentBrowserCliError } from "./agent-browser-output.js";
-export type { BrowserGetWhat } from "./agent-browser-output.js";
-export type { CdpErrorKind } from "./cdp-errors.js";
+export { FIND_ACTIONS, normalizeTabRef } from "./agent-browser-args.ts";
+export { unwrapCliEnvelope, AgentBrowserCliError } from "./agent-browser-output.ts";
+export type { BrowserGetWhat } from "./agent-browser-output.ts";
+export type { CdpErrorKind } from "./cdp-errors.ts";
 export type {
   A11yArgsOptions,
   CaptureAction,
@@ -123,7 +121,7 @@ export type {
   WaitArgsOptions,
   WaitElementState,
   WaitLoadState,
-} from "./agent-browser-args.js";
+} from "./agent-browser-args.ts";
 
 export interface BrowserActionResult {
   summary: string;
@@ -132,12 +130,7 @@ export interface BrowserActionResult {
   diagnostics?: Record<string, unknown>;
 }
 
-interface CommandResult {
-  stdout: string;
-  stderr: string;
-  code: number;
-  killed?: boolean;
-}
+type CommandResult = ExecResult;
 
 interface AgentBrowserVersionProbe {
   installed?: string;
@@ -162,14 +155,13 @@ function accessibilityCounts(payload: unknown): {
 }
 
 export async function connectBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<BrowserActionResult> {
-  await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, state, ctx);
+  await ensureArtifactDir(host, state);
+  await assertAgentBrowserInstalled(host, state);
 
-  const debugPortListening = await isPortListening(pi, state.port, ctx);
+  const debugPortListening = await isPortListening(host, state.port);
   if (!debugPortListening) {
     state.connected = false;
     state.lastAction = "connect";
@@ -191,11 +183,11 @@ export async function connectBrowser(
   // Arc doesn't expose page targets via CDP by default.
   // Create one so agent-browser can connect. This opens a tab in Arc
   // that inherits the user's full auth/cookie context.
-  await ensurePageTarget(pi, state.port, ctx);
+  await ensurePageTarget(host, state.port);
 
   // The daemon ignores --cdp once its session holds a connection, so a session pinned to
   // an old browser would silently absorb every command. Detach it if it's on the wrong port.
-  await ensureDaemonOnPort(pi, state.port, ctx);
+  await ensureDaemonOnPort(host, state.port);
 
   // Verify CDP connection works by fetching the current URL. This probe must fail hard:
   // status only proves the port exists, not that agent-browser can attach to it. A prior
@@ -203,16 +195,16 @@ export async function connectBrowser(
   // so bind a fresh tab here rather than weakening the pin or adopting a neighboring tab.
   let recoveredPinnedTab = false;
   try {
-    await refreshCurrentUrl(pi, state, ctx, false);
+    await refreshCurrentUrl(host, state, false);
   } catch (error) {
     if (!(error instanceof CdpError) || error.kind !== "tab-gone") throw error;
-    await runAgentBrowser(pi, ["tab", "new"], ctx, 30_000, { port: state.port });
+    await runAgentBrowser(host, ["tab", "new"], 30_000, { port: state.port });
     recoveredPinnedTab = true;
-    await refreshCurrentUrl(pi, state, ctx, false);
+    await refreshCurrentUrl(host, state, false);
   }
-  await refreshActiveTarget(pi, state, ctx);
-  await refreshDashboardUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await refreshActiveTarget(host, state);
+  await refreshDashboardUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = "connect";
@@ -224,7 +216,7 @@ export async function connectBrowser(
       : `Connected to browser via CDP on port ${state.port} with strict tab pinning.`,
     diagnostics: {
       port: state.port,
-      agentBrowserSession: agentBrowserSessionName(ctx.sessionManager.getSessionId()),
+      agentBrowserSession: agentBrowserSessionName(host.sessionId, host.sessionPrefix),
       pinTab: true,
       recoveredPinnedTab,
       targetId: state.targetId,
@@ -236,22 +228,21 @@ export async function connectBrowser(
 }
 
 export async function openBrowserPage(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   url: string,
   waitMode: WaitMode,
   options: { enableReactDevtools?: boolean } = {},
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const local = isLocalUrl(url) || isLocalUrl(state.currentUrl);
   // --enable registers the vendored React DevTools hook before this navigation commits,
   // which is what unlocks the `react …` commands on the opened page.
   const args = options.enableReactDevtools ? ["open", "--enable", "react-devtools", url] : ["open", url];
-  await runAgentBrowser(pi, args, ctx, 120_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, 120_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = `open ${url}`;
@@ -269,32 +260,31 @@ export async function openBrowserPage(
 }
 
 export async function snapshotBrowserPage(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   interactiveOnly: boolean,
   label = "snapshot",
   options: Omit<SnapshotArgsOptions, "interactiveOnly"> = {},
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   const args = buildSnapshotArgs({ interactiveOnly, ...options });
-  const snapshot = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  const snapshot = await runAgentBrowser(host, args, 60_000, { port: state.port });
 
   const snapshotFile = artifactPath(state, label, "txt");
-  await writeFile(snapshotFile, snapshot, "utf8");
+  await host.writeFile(snapshotFile, snapshot);
 
   state.connected = true;
   state.lastAction = args.join(" ");
   state.lastSnapshotAt = Date.now();
   state.lastSnapshotFile = snapshotFile;
   state.lastError = undefined;
-  await refreshCurrentUrl(pi, state, ctx);
+  await refreshCurrentUrl(host, state);
 
   return {
     summary: `Captured ${interactiveOnly ? "interactive " : ""}snapshot${options.delta ? " (delta)" : ""}.`,
-    contentText: await truncateForTool(snapshot, snapshotFile),
+    contentText: await truncateForTool(host, snapshot, snapshotFile),
     artifacts: [snapshotFile],
     diagnostics: {
       interactiveOnly,
@@ -310,13 +300,12 @@ export async function snapshotBrowserPage(
 }
 
 export async function readBrowserContent(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: ReadArgsOptions & { label?: string },
 ): Promise<BrowserActionResult> {
-  await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, state, ctx);
+  await ensureArtifactDir(host, state);
+  await assertAgentBrowserInstalled(host, state);
 
   // Always ask the CLI for JSON internally so we can preserve source/contentType
   // diagnostics while returning plain content by default.
@@ -324,10 +313,10 @@ export async function readBrowserContent(
   const displayArgs = buildReadArgs(params);
   const needsBrowser = !params.url;
   const timeout = params.timeoutMs !== undefined ? params.timeoutMs + 15_000 : 60_000;
-  const parsed = await runAgentBrowserJSON(pi, cliArgs, ctx, timeout, needsBrowser ? { port: state.port } : {});
+  const parsed = await runAgentBrowserJSON(host, cliArgs, timeout, needsBrowser ? { port: state.port } : {});
   const content = params.json ? JSON.stringify(parsed ?? null, null, 2) : readPayloadContent(parsed);
   const label = params.label ?? (params.url ? `read-${domainFromUrl(params.url) ?? "url"}` : "read-active-tab");
-  const formatted = await formatToolText(content || "(no content)", {
+  const formatted = await formatToolText(host, content || "(no content)", {
     label: `browser-${label}`,
     mode: "head",
   });
@@ -337,7 +326,7 @@ export async function readBrowserContent(
 
   if (needsBrowser) {
     state.connected = true;
-    await refreshCurrentUrl(pi, state, ctx);
+    await refreshCurrentUrl(host, state);
   }
 
   return {
@@ -364,25 +353,24 @@ export async function readBrowserContent(
 }
 
 export async function clickBrowserElement(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   ref: string,
   waitMode: WaitMode,
   resnapshot: boolean,
   human = false,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
   // --human moves the pointer along a curved, eased path before pressing, so hover-gated
   // UI and pointer-path bot checks see a real approach instead of a teleport.
   const clickArgs = human ? ["click", `@${normalizedRef}`, "--human"] : ["click", `@${normalizedRef}`];
-  await runAgentBrowser(pi, clickArgs, ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, clickArgs, 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = clickArgs.join(" ");
@@ -398,7 +386,7 @@ export async function clickBrowserElement(
   };
 
   if (resnapshot) {
-    const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `after-click-${normalizedRef}`);
+    const snapshot = await snapshotBrowserPage(host, state, true, `after-click-${normalizedRef}`);
     result.contentText = snapshot.contentText;
     result.artifacts = snapshot.artifacts;
   }
@@ -407,24 +395,23 @@ export async function clickBrowserElement(
 }
 
 export async function findBrowserElement(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: FindArgsOptions & { waitMode?: WaitMode; resnapshot?: boolean },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const local = isLocalUrl(state.currentUrl);
   // buildFindArgs enforces a concrete action — the CLI would otherwise default to click,
   // turning a "just locate" call into a page mutation.
   const args = buildFindArgs(params);
-  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local });
+  const output = await runAgentBrowser(host, args, 60_000, { port: state.port, local });
 
   const mutating = MUTATING_FIND_ACTIONS.has(params.action);
   const waitMode = params.waitMode ?? (mutating ? "networkidle" : "none");
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -446,9 +433,8 @@ export async function findBrowserElement(
 
   if (params.resnapshot ?? mutating) {
     const snapshot = await snapshotBrowserPage(
-      pi,
+      host,
       state,
-      ctx,
       true,
       `after-find-${sanitizeArtifactLabel(params.locator)}`,
     );
@@ -462,21 +448,20 @@ export async function findBrowserElement(
 }
 
 export async function fillBrowserElement(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   ref: string,
   text: string,
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["fill", `@${normalizedRef}`, text], ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, ["fill", `@${normalizedRef}`, text], 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = `fill @${normalizedRef}`;
@@ -494,21 +479,20 @@ export async function fillBrowserElement(
 }
 
 export async function selectBrowserOption(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   ref: string,
   option: string,
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(pi, ["select", `@${normalizedRef}`, option], ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, ["select", `@${normalizedRef}`, option], 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = `select @${normalizedRef}`;
@@ -526,18 +510,17 @@ export async function selectBrowserOption(
 }
 
 export async function pressBrowserKey(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   key: string,
   waitMode: WaitMode,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const local = isLocalUrl(state.currentUrl);
-  await runAgentBrowser(pi, ["press", key], ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, ["press", key], 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = `press ${key}`;
@@ -554,23 +537,22 @@ export async function pressBrowserKey(
 }
 
 export async function scrollBrowserPage(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   direction: "up" | "down" | "left" | "right",
   pixels: number | undefined,
   waitMode: WaitMode,
   containerSelector?: string,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const args = ["scroll", direction];
   if (typeof pixels === "number") args.push(String(pixels));
   if (containerSelector) args.push("--selector", containerSelector);
   const local = isLocalUrl(state.currentUrl);
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -589,19 +571,18 @@ export async function scrollBrowserPage(
 }
 
 export async function waitInBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: WaitArgsOptions,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const args = buildWaitArgs(params);
   // Give our kill-timeout headroom above the CLI's own wait timeout so agent-browser's
   // clearer timeout error wins over a hard process kill.
   const execTimeout = params.timeoutMs !== undefined ? params.timeoutMs + 15_000 : 120_000;
-  await runAgentBrowser(pi, args, ctx, execTimeout, { port: state.port, local: isLocalUrl(state.currentUrl) });
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, execTimeout, { port: state.port, local: isLocalUrl(state.currentUrl) });
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   const described = args.slice(1).join(" ");
   state.connected = true;
@@ -618,14 +599,13 @@ export async function waitInBrowser(
 }
 
 export async function navigateBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   action: "back" | "forward" | "reload" | "pushstate",
   waitMode: WaitMode,
   url?: string,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   if (action === "pushstate" && !url) {
     throw new Error("browser_nav pushstate requires a url.");
   }
@@ -633,10 +613,10 @@ export async function navigateBrowser(
   // pushstate does an SPA client-side navigation (auto-detects the Next.js router and
   // triggers the RSC fetch) instead of a full page load.
   const args = action === "pushstate" ? ["pushstate", url as string] : [action];
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local });
-  await waitForLoad(pi, ctx, waitMode, state.port, local);
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, 60_000, { port: state.port, local });
+  await waitForLoad(host, waitMode, state.port, local);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -655,15 +635,14 @@ export async function navigateBrowser(
 }
 
 export async function getBrowserInfo(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   what: BrowserGetWhat,
   selector: string | undefined,
   attrName: string | undefined,
   label = "get",
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const args = ["get", what];
   if (what === "attr") {
     if (!attrName) throw new Error("browser_get with what='attr' requires attrName.");
@@ -671,10 +650,10 @@ export async function getBrowserInfo(
   }
   if (selector) args.push(selector);
 
-  const parsed = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, args, 60_000, { port: state.port });
   const result = extractGetResult(what, parsed);
   const summaryText = formatGetResult(what, result);
-  const formatted = await formatToolText(summaryText, { label: `browser-${label}`, mode: "head" });
+  const formatted = await formatToolText(host, summaryText, { label: `browser-${label}`, mode: "head" });
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -696,9 +675,8 @@ export async function getBrowserInfo(
 }
 
 export async function debugBrowserPage(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   kind: "console" | "errors" | "network-requests" | "network-request",
   options: {
     clear?: boolean;
@@ -714,7 +692,7 @@ export async function debugBrowserPage(
     label?: string;
   },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   let args: string[];
   if (kind === "network-request") {
     if (!options.requestId) throw new Error("browser_debug network-request requires requestId.");
@@ -730,8 +708,8 @@ export async function debugBrowserPage(
   }
   if (options.clear && kind !== "network-request") args.push("--clear");
 
-  const output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
-  const formatted = await formatToolText(output || "(no output)", {
+  const output = await runAgentBrowser(host, args, 60_000, { port: state.port });
+  const formatted = await formatToolText(host, output || "(no output)", {
     label: `browser-${options.label ?? kind}`,
     mode: "tail",
   });
@@ -759,20 +737,19 @@ export async function debugBrowserPage(
 }
 
 export async function runBrowserCommand(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   args: string[],
   timeoutMs: number | undefined,
   label = "command",
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
   const safeArgs = normalizeBrowserCommandArgs(args);
   const timeout = Math.min(Math.max(timeoutMs ?? 60_000, 1_000), 300_000);
-  const output = await runAgentBrowser(pi, safeArgs, ctx, timeout, { port: state.port });
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
-  const formatted = await formatToolText(output || "(no output)", {
+  const output = await runAgentBrowser(host, safeArgs, timeout, { port: state.port });
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
+  const formatted = await formatToolText(host, output || "(no output)", {
     label: `browser-${label}`,
     mode: "head",
   });
@@ -796,19 +773,18 @@ export async function runBrowserCommand(
 }
 
 export async function evalInBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   script: string,
   label = "eval",
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
-  const output = await runAgentBrowser(pi, ["eval", script], ctx, 120_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
-  await markControlledTab(pi, state, ctx);
+  const output = await runAgentBrowser(host, ["eval", script], 120_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
+  await markControlledTab(host, state);
   const evalFile = artifactPath(state, label, "txt");
-  await writeFile(evalFile, output, "utf8");
+  await host.writeFile(evalFile, output);
 
   state.connected = true;
   state.lastAction = "eval";
@@ -817,7 +793,7 @@ export async function evalInBrowser(
 
   return {
     summary: "Executed browser eval script.",
-    contentText: await truncateForTool(output, evalFile),
+    contentText: await truncateForTool(host, output, evalFile),
     artifacts: [evalFile],
     diagnostics: {
       evalFile,
@@ -827,29 +803,28 @@ export async function evalInBrowser(
 }
 
 export async function checkpointBrowserPage(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   label: string,
   options: Omit<ScreenshotArgsOptions, "file"> & { delta?: boolean } = {},
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   const safeLabel = sanitizeArtifactLabel(label);
   const screenshotFile = artifactPath(state, `${safeLabel}-screenshot`, "png");
 
-  await markControlledTab(pi, state, ctx);
+  await markControlledTab(host, state);
   // --annotate overlays numbered labels keyed to snapshot refs ([N] ↔ @eN) and prints the
   // legend on stdout, so a vision pass over the screenshot maps straight back to refs.
   // --if-changed/--threshold (0.38) skip an unchanged capture: no file, no vision tokens.
   const screenshotArgs = buildScreenshotArgs({ ...options, file: screenshotFile });
-  const shot = await runAgentBrowserJSON(pi, screenshotArgs, ctx, 60_000, { port: state.port });
+  const shot = await runAgentBrowserJSON(host, screenshotArgs, 60_000, { port: state.port });
   const changed = !isPlainObject(shot) || shot.changed !== false;
   const legend = options.annotate ? formatAnnotationLegend(shot) : "";
   if (changed) state.lastScreenshotFile = screenshotFile;
 
-  const snapshot = await snapshotBrowserPage(pi, state, ctx, true, `${safeLabel}-snapshot`, {
+  const snapshot = await snapshotBrowserPage(host, state, true, `${safeLabel}-snapshot`, {
     delta: options.delta,
   });
   state.connected = true;
@@ -876,17 +851,16 @@ export async function checkpointBrowserPage(
 }
 
 export async function reactBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: ReactArgsOptions & { label?: string },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const args = buildReactArgs(params);
   let output: string;
   try {
-    output = await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
+    output = await runAgentBrowser(host, args, 60_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
   } catch (error) {
     if (error instanceof Error && /react|devtools|hook/i.test(error.message)) {
       throw new Error(
@@ -896,7 +870,7 @@ export async function reactBrowser(
     throw error;
   }
 
-  const formatted = await formatToolText(output || "(no output)", {
+  const formatted = await formatToolText(host, output || "(no output)", {
     label: `browser-react-${params.command}`,
     mode: "head",
   });
@@ -920,20 +894,19 @@ export async function reactBrowser(
 }
 
 export async function vitalsBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   url?: string,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const args = url ? ["vitals", url] : ["vitals"];
   const local = isLocalUrl(url) || isLocalUrl(state.currentUrl);
   // Vitals waits out LCP/INP observation windows, so give it a generous budget.
-  const output = await runAgentBrowser(pi, args, ctx, 120_000, { port: state.port, local });
-  await refreshCurrentUrl(pi, state, ctx);
+  const output = await runAgentBrowser(host, args, 120_000, { port: state.port, local });
+  await refreshCurrentUrl(host, state);
 
-  const formatted = await formatToolText(output || "(no output)", {
+  const formatted = await formatToolText(host, output || "(no output)", {
     label: "browser-vitals",
     mode: "head",
   });
@@ -955,28 +928,27 @@ export async function vitalsBrowser(
 }
 
 export async function auditAccessibility(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: A11yArgsOptions & { label?: string },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   // Keep the CLI response structured so counts, selectors, and incomplete checks remain
   // machine-readable. formatToolText spills oversized reports into the artifact directory.
   const args = buildA11yArgs({ ...params, json: true });
-  const parsed = await runAgentBrowserJSON(pi, args, ctx, 120_000, {
+  const parsed = await runAgentBrowserJSON(host, args, 120_000, {
     port: state.port,
     local: isLocalUrl(params.url) || isLocalUrl(state.currentUrl),
   });
   const report = JSON.stringify(parsed ?? null, null, 2);
-  const formatted = await formatToolText(report, {
+  const formatted = await formatToolText(host, report, {
     label: `browser-${params.label ?? "a11y-audit"}`,
     mode: "head",
   });
 
-  await refreshCurrentUrl(pi, state, ctx);
-  await markControlledTab(pi, state, ctx);
+  await refreshCurrentUrl(host, state);
+  await markControlledTab(host, state);
   const counts = accessibilityCounts(parsed);
 
   state.connected = true;
@@ -1000,12 +972,11 @@ export async function auditAccessibility(
 }
 
 export async function tabBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: TabArgsOptions,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const args = buildTabArgs(params);
   const previousTargetId = state.targetId;
@@ -1022,7 +993,7 @@ export async function tabBrowser(
   };
 
   if (params.action === "list") {
-    const parsed = await runAgentBrowserJSON(pi, args, ctx, 30_000, { port: state.port });
+    const parsed = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
     const tabs = normalizeTabList(parsed);
     const active = tabs.find((tab) => tab.active === true);
     state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
@@ -1050,16 +1021,16 @@ export async function tabBrowser(
   }
 
   if (params.action === "new" || params.action === "switch") {
-    await clearControlledTab(pi, state, ctx);
+    await clearControlledTab(host, state);
   }
   // Keep tab command results structured: 0.34 includes the durable targetId, and close can
   // intentionally leave a strict session in tab_gone instead of selecting the next tab.
-  const commandResult = await runAgentBrowserJSON(pi, args, ctx, 60_000, { port: state.port });
-  const tabs = await refreshActiveTarget(pi, state, ctx);
+  const commandResult = await runAgentBrowserJSON(host, args, 60_000, { port: state.port });
+  const tabs = await refreshActiveTarget(host, state);
 
   if (state.targetId) {
-    await refreshCurrentUrl(pi, state, ctx);
-    await markControlledTab(pi, state, ctx);
+    await refreshCurrentUrl(host, state);
+    await markControlledTab(host, state);
   } else {
     // Closing the bound/current tab is a successful mutation under strict pinning. Do not
     // turn it into a failed tool call by probing the now-intentionally-unbound page.
@@ -1096,15 +1067,14 @@ export async function tabBrowser(
 }
 
 export async function isBrowserState(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: IsArgsOptions,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const args = buildIsArgs(params);
-  const parsed = await runAgentBrowserJSON(pi, args, ctx, 30_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
   const value = extractBooleanResult(params.check, parsed);
 
   state.connected = true;
@@ -1123,16 +1093,15 @@ export async function isBrowserState(
 }
 
 export async function setBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: SetArgsOptions,
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
+  await ensureReady(host, state);
 
   const args = buildSetArgs(params);
-  await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, 30_000, { port: state.port });
+  await markControlledTab(host, state);
 
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -1158,18 +1127,17 @@ export async function setBrowser(
 }
 
 export async function harBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: { action: CaptureAction; content?: HarContentMode; label?: string },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   if (params.action === "start") {
     const file = artifactPath(state, params.label ?? "network", "har");
     const args = buildHarArgs({ action: "start", content: params.content });
-    await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
+    await runAgentBrowser(host, args, 30_000, { port: state.port });
     state.har = { file, startedAt: Date.now() };
     state.connected = true;
     state.lastAction = args.join(" ");
@@ -1189,7 +1157,7 @@ export async function harBrowser(
   const previous = state.har;
   const file = previous?.file ?? artifactPath(state, params.label ?? "network", "har");
   const args = buildHarArgs({ action: "stop", file });
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await runAgentBrowser(host, args, 60_000, { port: state.port });
   state.har = undefined;
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -1207,23 +1175,20 @@ export async function harBrowser(
 }
 
 export async function exportCookies(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: { path?: string; label?: string },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   // agent-browser scopes `cookies get` to the pinned tab's URL, so the caller must be on the
   // origin whose cookies it wants. The values go straight to disk and never into the result.
-  const cookies = extractCookies(await runAgentBrowserJSON(pi, ["cookies", "get"], ctx, 30_000, { port: state.port }));
+  const cookies = extractCookies(await runAgentBrowserJSON(host, ["cookies", "get"], 30_000, { port: state.port }));
   const file = params.path
-    ? resolve(ctx.cwd, params.path.replace(/^~(?=$|\/)/, homedir()))
+    ? resolve(host.cwd, params.path.replace(/^~(?=$|\/)/, host.homeDir))
     : artifactPath(state, params.label ?? "cookies", "json");
-  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  await writeFile(file, `${JSON.stringify(cookies, null, 2)}\n`, { mode: 0o600 });
-  await chmod(file, 0o600); // writeFile's mode only applies when it creates the file
+  await host.writePrivateFile(file, `${JSON.stringify(cookies, null, 2)}\n`);
   state.connected = true;
   state.lastAction = "cookies get";
   state.lastError = undefined;
@@ -1237,17 +1202,16 @@ export async function exportCookies(
 }
 
 export async function recordBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: Omit<RecordArgsOptions, "file"> & { label?: string; format?: "webm" | "mp4" },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   if (params.action === "stop") {
     const previous = state.recording;
-    const stopped = await runAgentBrowserJSON(pi, buildRecordArgs({ action: "stop" }), ctx, 60_000, {
+    const stopped = await runAgentBrowserJSON(host, buildRecordArgs({ action: "stop" }), 60_000, {
       port: state.port,
     });
     state.recording = undefined;
@@ -1275,13 +1239,13 @@ export async function recordBrowser(
   // .mp4 (H.264) plays inline in more viewers; .webm (VP8) stays the smaller default.
   const file = artifactPath(state, params.label ?? "recording", params.format ?? "webm");
   const args = buildRecordArgs({ ...params, file });
-  await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
-  await markControlledTab(pi, state, ctx);
+  await runAgentBrowser(host, args, 30_000, { port: state.port });
+  await markControlledTab(host, state);
   state.recording = { file, startedAt: Date.now() };
   state.connected = true;
   state.lastAction = args.join(" ");
   state.lastError = undefined;
-  await refreshCurrentUrl(pi, state, ctx);
+  await refreshCurrentUrl(host, state);
 
   const sheet = params.contactSheet || params.contactSheetThreshold !== undefined ? contactSheetPath(file) : undefined;
   return {
@@ -1304,12 +1268,11 @@ function readString(payload: unknown, key: string): string | undefined {
 }
 
 export async function traceBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: { action: CaptureAction; label?: string },
 ): Promise<BrowserActionResult> {
-  return captureRecording(pi, state, ctx, params, {
+  return captureRecording(host, state, params, {
     kind: "tracing",
     extension: "zip",
     buildArgs: buildTraceArgs,
@@ -1317,9 +1280,8 @@ export async function traceBrowser(
 }
 
 async function captureRecording(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   params: { action: CaptureAction; label?: string },
   options: {
     kind: "tracing";
@@ -1327,20 +1289,20 @@ async function captureRecording(
     buildArgs: (input: { action: CaptureAction; file?: string }) => string[];
   },
 ): Promise<BrowserActionResult> {
-  await ensureReady(pi, state, ctx);
-  await ensureArtifactDir(state);
+  await ensureReady(host, state);
+  await ensureArtifactDir(host, state);
 
   if (params.action === "start") {
     const label = params.label ?? options.kind;
     const file = artifactPath(state, label, options.extension);
     const args = options.buildArgs({ action: "start", file });
-    await runAgentBrowser(pi, args, ctx, 30_000, { port: state.port });
-    await markControlledTab(pi, state, ctx);
+    await runAgentBrowser(host, args, 30_000, { port: state.port });
+    await markControlledTab(host, state);
     state[options.kind] = { file, startedAt: Date.now() };
     state.connected = true;
     state.lastAction = args.join(" ");
     state.lastError = undefined;
-    await refreshCurrentUrl(pi, state, ctx);
+    await refreshCurrentUrl(host, state);
 
     return {
       summary: `Started ${options.kind} → ${file}`,
@@ -1354,7 +1316,7 @@ async function captureRecording(
 
   const previous = state[options.kind];
   const args = options.buildArgs({ action: "stop" });
-  await runAgentBrowser(pi, args, ctx, 60_000, { port: state.port });
+  await runAgentBrowser(host, args, 60_000, { port: state.port });
   state[options.kind] = undefined;
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -1385,36 +1347,35 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
 }
 
 
-async function markControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
+async function markControlledTab(host: BrowserHost, state: BrowserState): Promise<void> {
   if (!resolveControlBannerEnabled()) return;
   // currentDomain is refreshed just before this call, so it's the live target; lastAction
   // lags by one step here, so the pill identifies the agent + what it's driving instead.
   const target = state.currentDomain ?? `cdp:${state.port}`;
   const labelText = controlledTabLabel(target);
-  await runAgentBrowser(pi, ["eval", controlledTabMarkScript(labelText)], ctx, 10_000, {
+  await runAgentBrowser(host, ["eval", controlledTabMarkScript(labelText, host.markerFaviconHref)], 10_000, {
     port: state.port,
     allowFailure: true,
   });
 }
 
-async function clearControlledTab(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
-  await runAgentBrowser(pi, ["eval", CONTROLLED_TAB_CLEAR_SCRIPT], ctx, 10_000, {
+async function clearControlledTab(host: BrowserHost, state: BrowserState): Promise<void> {
+  await runAgentBrowser(host, ["eval", CONTROLLED_TAB_CLEAR_SCRIPT], 10_000, {
     port: state.port,
     allowFailure: true,
   });
 }
 
-async function ensureReady(pi: ExtensionAPI, state: BrowserState, ctx: ExtensionContext): Promise<void> {
-  await ensureArtifactDir(state);
-  await assertAgentBrowserInstalled(pi, state, ctx);
+async function ensureReady(host: BrowserHost, state: BrowserState): Promise<void> {
+  await ensureArtifactDir(host, state);
+  await assertAgentBrowserInstalled(host, state);
 }
 
 async function assertAgentBrowserInstalled(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<void> {
-  const probe = await probeAgentBrowserVersion(pi, state, ctx);
+  const probe = await probeAgentBrowserVersion(host, state);
   if (!probe.installed) {
     throw new Error("agent-browser CLI not found or returned an unreadable version. Install it with `npm i -g agent-browser@latest`.");
   }
@@ -1426,14 +1387,12 @@ async function assertAgentBrowserInstalled(
 }
 
 async function probeAgentBrowserVersion(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<AgentBrowserVersionProbe> {
   let installed: string | undefined;
   try {
-    const result = (await pi.exec("agent-browser", ["--version"], {
-      signal: ctx.signal,
+    const result = (await host.exec("agent-browser", ["--version"], {
       timeout: 5_000,
     })) as CommandResult;
     if (result.code === 0) installed = extractAgentBrowserVersion(joinAgentBrowserOutput(result));
@@ -1455,18 +1414,17 @@ interface CdpTarget {
 }
 
 async function ensurePageTarget(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   port: number,
-  ctx: ExtensionContext,
 ): Promise<void> {
-  const targets = await fetchTargets(pi, port, ctx);
+  const targets = await fetchTargets(host, port);
   if (targets.some((t) => t.type === "page")) return;
 
   // No page target — create one. This opens a blank tab in Arc.
-  const create = (await pi.exec(
+  const create = (await host.exec(
     "curl",
     ["-sf", "-X", "PUT", `http://localhost:${port}/json/new?about:blank`],
-    { signal: ctx.signal, timeout: 5_000 },
+    { timeout: 5_000 },
   )) as CommandResult;
 
   if (create.code !== 0) {
@@ -1476,9 +1434,9 @@ async function ensurePageTarget(
 
 // Re-create a page target so a fresh agent-browser attach can succeed. Swallows failures
 // so the caller can fall back to surfacing the original error.
-async function tryEnsureTarget(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<boolean> {
+async function tryEnsureTarget(host: BrowserHost, port: number): Promise<boolean> {
   try {
-    await ensurePageTarget(pi, port, ctx);
+    await ensurePageTarget(host, port);
     return true;
   } catch {
     return false;
@@ -1492,10 +1450,10 @@ async function tryEnsureTarget(pi: ExtensionAPI, port: number, ctx: ExtensionCon
  * and detach (`close` disconnects the session without quitting Arc) so the next command
  * re-attaches to the right browser. Best-effort: verification failures don't block connect.
  */
-async function ensureDaemonOnPort(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<void> {
+async function ensureDaemonOnPort(host: BrowserHost, port: number): Promise<void> {
   let cdpUrl: string | undefined;
   try {
-    const data = await runAgentBrowserJSON(pi, ["get", "cdp-url"], ctx, 10_000, { port });
+    const data = await runAgentBrowserJSON(host, ["get", "cdp-url"], 10_000, { port });
     if (isPlainObject(data) && typeof data.cdpUrl === "string") cdpUrl = data.cdpUrl;
   } catch {
     return; // no live session yet — the next command attaches fresh to the right port
@@ -1510,12 +1468,11 @@ async function ensureDaemonOnPort(pi: ExtensionAPI, port: number, ctx: Extension
   }
   if (connectedPort === undefined || connectedPort === port) return;
 
-  await runAgentBrowser(pi, ["close"], ctx, 15_000, { port, allowFailure: true });
+  await runAgentBrowser(host, ["close"], 15_000, { port, allowFailure: true });
 }
 
-async function fetchTargets(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<CdpTarget[]> {
-  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/list`], {
-    signal: ctx.signal,
+async function fetchTargets(host: BrowserHost, port: number): Promise<CdpTarget[]> {
+  const result = (await host.exec("curl", ["-sf", `http://localhost:${port}/json/list`], {
     timeout: 5_000,
   })) as CommandResult;
   if (result.code !== 0) return [];
@@ -1528,9 +1485,8 @@ async function fetchTargets(pi: ExtensionAPI, port: number, ctx: ExtensionContex
   }
 }
 
-async function fetchBrowserVersion(pi: ExtensionAPI, port: number, ctx: ExtensionContext): Promise<string | undefined> {
-  const result = (await pi.exec("curl", ["-sf", `http://localhost:${port}/json/version`], {
-    signal: ctx.signal,
+async function fetchBrowserVersion(host: BrowserHost, port: number): Promise<string | undefined> {
+  const result = (await host.exec("curl", ["-sf", `http://localhost:${port}/json/version`], {
     timeout: 5_000,
   })) as CommandResult;
   if (result.code !== 0) return undefined;
@@ -1544,12 +1500,10 @@ async function fetchBrowserVersion(pi: ExtensionAPI, port: number, ctx: Extensio
 }
 
 async function isPortListening(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   port: number,
-  ctx: ExtensionContext,
 ): Promise<boolean> {
-  const result = (await pi.exec("lsof", ["-i", `tcp:${port}`, "-sTCP:LISTEN", "-n", "-P"], {
-    signal: ctx.signal,
+  const result = (await host.exec("lsof", ["-i", `tcp:${port}`, "-sTCP:LISTEN", "-n", "-P"], {
     timeout: 5_000,
   })) as CommandResult;
 
@@ -1564,13 +1518,12 @@ async function isPortListening(
  * state before the first widget paint.
  */
 export async function verifyConnection(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<ConnectionProbe> {
-  const agentBrowser = await probeAgentBrowserVersion(pi, state, ctx);
-  const agentBrowserSession = agentBrowserSessionName(ctx.sessionManager.getSessionId());
-  const portListening = await isPortListening(pi, state.port, ctx);
+  const agentBrowser = await probeAgentBrowserVersion(host, state);
+  const agentBrowserSession = agentBrowserSessionName(host.sessionId, host.sessionPrefix);
+  const portListening = await isPortListening(host, state.port);
   if (!portListening) {
     state.connected = false;
     return {
@@ -1587,18 +1540,18 @@ export async function verifyConnection(
     };
   }
 
-  const targets = await fetchTargets(pi, state.port, ctx);
+  const targets = await fetchTargets(host, state.port);
   const pages = targets.filter((t) => t.type === "page");
   // Best guess at a foreground page for display only — agent-browser picks its own target,
   // so this is a probe observation, not necessarily the controlled tab.
   const attached = pages.find((t) => Boolean(t.url) && t.url !== "about:blank") ?? pages[0];
-  const browser = await fetchBrowserVersion(pi, state.port, ctx);
+  const browser = await fetchBrowserVersion(host, state.port);
 
   // Only touch agent-browser when state proves this Pi session has previously established a
   // binding. This actively restores/checks known bindings without making browser_status on a
   // brand-new session create a tab as a side effect.
   const bindingError = agentBrowser.compatible && (state.targetId || state.tabGoneTargetId)
-    ? await probeKnownTabBinding(pi, state, ctx)
+    ? await probeKnownTabBinding(host, state)
     : undefined;
 
   state.connected = bindingError === undefined;
@@ -1622,16 +1575,15 @@ export async function verifyConnection(
 }
 
 async function probeKnownTabBinding(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<string | undefined> {
   const priorTargetId = state.tabGoneTargetId ?? state.targetId;
   const priorLastUrl = state.tabGoneLastUrl;
 
   try {
-    await refreshActiveTarget(pi, state, ctx);
-    await refreshCurrentUrl(pi, state, ctx, false);
+    await refreshActiveTarget(host, state);
+    await refreshCurrentUrl(host, state, false);
     state.lastError = undefined;
     return undefined;
   } catch (error) {
@@ -1652,12 +1604,11 @@ async function probeKnownTabBinding(
 }
 
 async function refreshCurrentUrl(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
   allowFailure = true,
 ): Promise<void> {
-  const result = await runAgentBrowser(pi, ["get", "url"], ctx, 10_000, { port: state.port, allowFailure });
+  const result = await runAgentBrowser(host, ["get", "url"], 10_000, { port: state.port, allowFailure });
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
@@ -1670,11 +1621,10 @@ async function refreshCurrentUrl(
 
 /** Read the session's active durable CDP target after connect or a tab mutation. */
 async function refreshActiveTarget(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<Array<Record<string, unknown>>> {
-  const parsed = await runAgentBrowserJSON(pi, ["tab", "list"], ctx, 30_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, ["tab", "list"], 30_000, { port: state.port });
   const tabs = normalizeTabList(parsed);
   const active = tabs.find((tab) => tab.active === true);
   state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
@@ -1682,11 +1632,10 @@ async function refreshActiveTarget(
 }
 
 async function refreshDashboardUrl(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   state: BrowserState,
-  ctx: ExtensionContext,
 ): Promise<void> {
-  if (await isPortListening(pi, state.dashboardPort, ctx)) {
+  if (await isPortListening(host, state.dashboardPort)) {
     state.dashboardUrl = `http://localhost:${state.dashboardPort}`;
   } else {
     state.dashboardUrl = undefined;
@@ -1694,20 +1643,19 @@ async function refreshDashboardUrl(
 }
 
 async function runAgentBrowser(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   args: string[],
-  ctx: ExtensionContext,
   timeout: number,
   options: { allowFailure?: boolean; port?: number; local?: boolean } = {},
 ): Promise<string> {
   let fullArgs = options.port !== undefined
-    ? buildCdpInvocationArgs(args, options.port, ctx.sessionManager.getSessionId())
+    ? buildCdpInvocationArgs(args, options.port, host.sessionId, host.sessionPrefix)
     : args;
   let effectiveTimeout = timeout;
 
   // agent-browser honors --timeout only for `wait` operations (waitForSelector and
   // --load/--url/--text/--fn); navigation and element actions use the daemon default
-  // (25s, AGENT_BROWSER_DEFAULT_TIMEOUT — inherited from pi's env) and ignore the flag.
+  // (25s, AGENT_BROWSER_DEFAULT_TIMEOUT — inherited from the host's env) and ignore the flag.
   // So only a `wait` against a local/dev-server target gets the larger budget, and we
   // keep our own kill-timeout above agent-browser's so its clearer error wins.
   if (options.local && args[0] === "wait" && !args.includes("--timeout")) {
@@ -1717,8 +1665,7 @@ async function runAgentBrowser(
   }
 
   const exec = (): Promise<CommandResult> =>
-    pi.exec("agent-browser", fullArgs, {
-      signal: ctx.signal,
+    host.exec("agent-browser", fullArgs, {
       timeout: effectiveTimeout,
     }) as Promise<CommandResult>;
 
@@ -1736,7 +1683,7 @@ async function runAgentBrowser(
   // one and letting agent-browser re-attach on retry. A strict `tab_gone` stop is deliberately
   // excluded: silently creating/adopting a tab would defeat 0.34's session isolation.
   if (kind === "target-gone" && options.port !== undefined) {
-    const healed = await tryEnsureTarget(pi, options.port, ctx);
+    const healed = await tryEnsureTarget(host, options.port);
     if (healed) {
       result = await exec();
       if (result.code === 0) return joinAgentBrowserOutput(result);
@@ -1785,14 +1732,13 @@ function readPayloadDiagnostics(payload: unknown): Record<string, unknown> {
 }
 
 async function runAgentBrowserJSON(
-  pi: ExtensionAPI,
+  host: BrowserHost,
   args: string[],
-  ctx: ExtensionContext,
   timeout: number,
   options: { port?: number; local?: boolean } = {},
 ): Promise<unknown> {
   const argsWithJson = args.includes("--json") ? args : [...args, "--json"];
-  const output = await runAgentBrowser(pi, argsWithJson, ctx, timeout, options);
+  const output = await runAgentBrowser(host, argsWithJson, timeout, options);
   if (!output) return undefined;
 
   const jsonStart = findJsonStart(output);
@@ -1821,8 +1767,7 @@ function truncateOutputForError(output: string, max = 200): string {
 }
 
 async function waitForLoad(
-  pi: ExtensionAPI,
-  ctx: ExtensionContext,
+  host: BrowserHost,
   waitMode: WaitMode,
   port: number,
   local = false,
@@ -1836,7 +1781,7 @@ async function waitForLoad(
     // rather than hanging or erroring.
     const settleMs = localBrowserSettleMs();
     const loadState = waitMode === "networkidle" ? "networkidle" : "load";
-    await runAgentBrowser(pi, ["wait", "--load", loadState, "--timeout", String(settleMs)], ctx, settleMs + 15_000, {
+    await runAgentBrowser(host, ["wait", "--load", loadState, "--timeout", String(settleMs)], settleMs + 15_000, {
       port,
       allowFailure: true,
     });
@@ -1844,11 +1789,11 @@ async function waitForLoad(
   }
 
   const ms = waitMode === "networkidle" ? 2000 : 1000;
-  await runAgentBrowser(pi, ["wait", String(ms)], ctx, ms + 30_000, { port });
+  await runAgentBrowser(host, ["wait", String(ms)], ms + 30_000, { port });
 }
 
-async function ensureArtifactDir(state: BrowserState): Promise<void> {
-  await mkdir(state.artifactDir, { recursive: true });
+async function ensureArtifactDir(host: BrowserHost, state: BrowserState): Promise<void> {
+  await host.ensureDir(state.artifactDir);
 }
 
 function artifactPath(state: BrowserState, label: string, extension: string): string {
@@ -1856,8 +1801,8 @@ function artifactPath(state: BrowserState, label: string, extension: string): st
   return join(state.artifactDir, `${timestamp}-${sanitizeArtifactLabel(label)}.${extension}`);
 }
 
-async function truncateForTool(content: string, artifactPathValue?: string): Promise<string> {
-  const output = await formatToolText(content, {
+async function truncateForTool(host: BrowserHost, content: string, artifactPathValue?: string): Promise<string> {
+  const output = await formatToolText(host, content, {
     label: "browser-output",
     mode: "head",
     fullOutputFile: artifactPathValue,

@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { env as hostEnv } from "./env.ts";
+import { sha256Hex } from "./sha256.ts";
 
 const DA_BROWSER_NAMESPACE = "da-browser";
 
@@ -10,7 +11,7 @@ export type InputMode = (typeof INPUT_MODES)[number];
  * default and stays implicit; `smooth`/`human` make recordings read as real cursor motion
  * and defeat naive "no mousemove" bot checks.
  */
-export function resolveInputMode(env: Record<string, string | undefined> = process.env): InputMode | undefined {
+export function resolveInputMode(env: Record<string, string | undefined> = hostEnv): InputMode | undefined {
   const raw = env.DA_BROWSER_INPUT_MODE?.trim().toLowerCase();
   if (!raw || raw === "instant") return undefined;
   if (!(INPUT_MODES as readonly string[]).includes(raw)) {
@@ -19,11 +20,11 @@ export function resolveInputMode(env: Record<string, string | undefined> = proce
   return raw as InputMode;
 }
 
-export function agentBrowserSessionName(piSessionId: string): string {
-  const source = piSessionId.trim() || "session";
+export function agentBrowserSessionName(hostSessionId: string, prefix = "pi"): string {
+  const source = hostSessionId.trim() || "session";
   // agent-browser puts namespace + session in a Unix socket path. A raw Pi UUID can exceed
   // macOS's 103-byte socket-path limit, so retain 64 bits of a deterministic SHA-256 digest.
-  return `pi-${createHash("sha256").update(source).digest("hex").slice(0, 16)}`;
+  return `${prefix}-${sha256Hex(source).slice(0, 16)}`;
 }
 
 /**
@@ -42,7 +43,8 @@ export function agentBrowserSessionName(piSessionId: string): string {
 export function buildCdpInvocationArgs(
   commandArgs: readonly string[],
   port: number,
-  piSessionId: string,
+  hostSessionId: string,
+  sessionPrefix = "pi",
 ): string[] {
   if (commandArgs.some((arg) => arg === "--allowed-domains" || arg.startsWith("--allowed-domains="))) {
     throw new Error(
@@ -64,7 +66,7 @@ export function buildCdpInvocationArgs(
     "--namespace",
     DA_BROWSER_NAMESPACE,
     "--session",
-    agentBrowserSessionName(piSessionId),
+    agentBrowserSessionName(hostSessionId, sessionPrefix),
     "--pin-tab",
     ...(inputMode ? ["--input-mode", inputMode] : []),
     "--allowed-domains",

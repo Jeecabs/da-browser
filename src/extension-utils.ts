@@ -1,13 +1,3 @@
-import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
-
-export function hasAnySelectedTool(
-  options: Pick<BuildSystemPromptOptions, "selectedTools"> | undefined,
-  names: readonly string[],
-): boolean {
-  const selected = new Set(options?.selectedTools ?? []);
-  return names.some((name) => selected.has(name));
-}
-
 interface PrepareArgumentsOptions {
   aliases?: Record<string, string>;
   booleanFields?: readonly string[];

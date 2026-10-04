@@ -1,0 +1,12 @@
+{
+  "name": "da-browser",
+  "owner": { "name": "Jeecabs" },
+  "metadata": { "description": "da-browser for Claude Code: browser control on your own signed-in Arc or Chromium." },
+  "plugins": [
+    {
+      "name": "da-browser",
+      "source": "./",
+      "description": "Drive your own Arc or Chromium from Claude Code through agent-browser, with a strictly pinned tab per session."
+    }
+  ]
+}

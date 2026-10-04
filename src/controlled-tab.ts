@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { CONTROLLED_TAB_FAVICON_PNG_BASE64 } from "./controlled-tab-favicon.ts";
 
 // Builders for the controlled-tab marker, injected via `agent-browser eval`.
 // A stationary coral glow fades inward from the viewport edges. The transparent
@@ -10,9 +10,7 @@ const CONTROLLED_TAB_STYLE_ID = "__pi_agent_controlled_tab_style__";
 const CONTROLLED_TAB_FAVICON_ATTR = "data-pi-agent-controlled-tab-favicon";
 const CONTROLLED_TAB_FAVICON_REL_ATTR = "data-pi-agent-controlled-tab-original-rel";
 const CONTROLLED_TAB_FAVICON_ID = "__pi_agent_controlled_tab_favicon__";
-const CONTROLLED_TAB_FAVICON_HREF = "data:image/png;base64," + readFileSync(
-  new URL("../assets/controlled-tab/favicon-64.png", import.meta.url),
-).toString("base64");
+const CONTROLLED_TAB_FAVICON_HREF = "data:image/png;base64," + CONTROLLED_TAB_FAVICON_PNG_BASE64;
 
 // Restore the previous marker's in-place favicon override, including after a reload
 // from an older extension version. New markers use a separate icon link instead.
@@ -32,14 +30,14 @@ const RESTORE_LEGACY_FAVICON_SCRIPT = `
 
 // Builds the inject script. `labelText` is intentionally unused now; the visible page marker
 // is only the edge glow. Keep the parameter for call-site compatibility.
-export function controlledTabMarkScript(_labelText: string): string {
+export function controlledTabMarkScript(_labelText: string, faviconHrefOverride?: string): string {
   return `(() => {
   const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
   const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
   const faviconAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ATTR)};
   const faviconRelAttr = ${JSON.stringify(CONTROLLED_TAB_FAVICON_REL_ATTR)};
   const faviconId = ${JSON.stringify(CONTROLLED_TAB_FAVICON_ID)};
-  const faviconHref = ${JSON.stringify(CONTROLLED_TAB_FAVICON_HREF)};
+  const faviconHref = ${JSON.stringify(faviconHrefOverride ?? CONTROLLED_TAB_FAVICON_HREF)};
 
   ${RESTORE_LEGACY_FAVICON_SCRIPT}
 

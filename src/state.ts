@@ -1,5 +1,5 @@
-import os from "node:os";
-import { basename, join } from "node:path";
+import { env, tmpDir } from "./env.ts";
+import { basename, join } from "./paths.ts";
 
 export type WaitMode = "none" | "load" | "networkidle";
 
@@ -62,7 +62,7 @@ export function createBrowserState(
   dashboardPort = resolveBrowserDashboardPort(),
 ): BrowserState {
   const slug = `${sanitizeSegment(basename(cwd) || "project")}-${hashString(cwd)}`;
-  const artifactDir = join(os.tmpdir(), "da-browser", slug);
+  const artifactDir = join(tmpDir(), "da-browser", slug);
 
   return {
     port,
@@ -143,9 +143,9 @@ export function resolveBrowserPort(explicitPort?: number): number {
   if (isValidPort(explicitPort)) return explicitPort;
 
   const envValue =
-    process.env.PI_BROWSER_PORT ??
-    process.env.AGENT_BROWSER_PORT ??
-    process.env.ARC_REMOTE_DEBUG_PORT;
+    env.PI_BROWSER_PORT ??
+    env.AGENT_BROWSER_PORT ??
+    env.ARC_REMOTE_DEBUG_PORT;
   const envPort = Number(envValue);
 
   if (isValidPort(envPort)) return envPort;
@@ -155,7 +155,7 @@ export function resolveBrowserPort(explicitPort?: number): number {
 export function resolveBrowserDashboardPort(explicitPort?: number): number {
   if (isValidPort(explicitPort)) return explicitPort;
 
-  const envPort = Number(process.env.PI_BROWSER_DASHBOARD_PORT);
+  const envPort = Number(env.PI_BROWSER_DASHBOARD_PORT);
   if (isValidPort(envPort)) return envPort;
   return 4848;
 }
@@ -164,7 +164,7 @@ export function resolveBrowserDashboardPort(explicitPort?: number): number {
 // PI_BROWSER_CONTROL_BANNER to a falsy value (0/false/off/no/none/hidden) to
 // suppress it — e.g. for a clean demo recording.
 export function resolveControlBannerEnabled(): boolean {
-  const raw = process.env.PI_BROWSER_CONTROL_BANNER?.trim().toLowerCase();
+  const raw = env.PI_BROWSER_CONTROL_BANNER?.trim().toLowerCase();
   if (!raw) return true;
   return !["0", "false", "off", "no", "none", "hidden", "disable", "disabled"].includes(raw);
 }
@@ -363,7 +363,7 @@ function isPrivateIpv4(hostname: string): boolean {
 }
 
 function extraLocalHosts(): string[] {
-  const raw = process.env.PI_BROWSER_LOCAL_HOSTS;
+  const raw = env.PI_BROWSER_LOCAL_HOSTS;
   if (!raw) return [];
   return raw
     .split(",")
@@ -377,7 +377,7 @@ function extraLocalHosts(): string[] {
  * (default 180000 = 3m).
  */
 export function localBrowserTimeoutMs(): number {
-  const value = Number(process.env.PI_BROWSER_LOCAL_TIMEOUT_MS);
+  const value = Number(env.PI_BROWSER_LOCAL_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_LOCAL_TIMEOUT_MS;
 }
 
@@ -388,7 +388,7 @@ export function localBrowserTimeoutMs(): number {
  * step. Override with PI_BROWSER_LOCAL_SETTLE_MS (default 30000 = 30s).
  */
 export function localBrowserSettleMs(): number {
-  const value = Number(process.env.PI_BROWSER_LOCAL_SETTLE_MS);
+  const value = Number(env.PI_BROWSER_LOCAL_SETTLE_MS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_LOCAL_SETTLE_MS;
 }
 

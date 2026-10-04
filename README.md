@@ -67,6 +67,8 @@ Open a page and snapshot it:
 | `/browser connect [port]` | Connect to Arc/Chromium through CDP |
 | `/browser status` | Probe connection, page targets, browser version, artifacts |
 | `/browser cleanup` | Disconnect/reset browser state for the session |
+| `/browser view` | Claude Code: open or close a live view of the pinned tab |
+| `/browser pick [what]` | Claude Code: click an element in the tab; its description goes into your prompt |
 
 In Claude Code, `/browser` runs at once, even while Claude is working, without starting a turn.
 
@@ -86,6 +88,14 @@ Both hosts answer the same three questions, each in one place:
 
 The raw output (snapshots, page text) goes to the model, never to the transcript. The trail disappears when the browser is idle.
 
+Claude Code adds:
+
+- **A live view.** `/browser view` draws the pinned tab in a pane, refreshed every two seconds and after each browser call. It needs a terminal with kitty graphics (Ghostty, kitty); elsewhere the pane shows its alt text.
+- **Handoffs.** With `browser_handoff`, Claude asks you to act in the tab: log in, pass a captcha, or (with `pick`) click the element it means. The ask shows as a bar in the page and in the band, with Done and Cancel.
+- **A browser subagent.** `da-browser:browser` runs a web task with only the browser tools and reports back, so page snapshots stay out of the main context.
+- **Screenshots in checkpoint rows**, drawn small under the facts.
+- **Esc stops a browser command**, instead of leaving it running until its timeout.
+
 ## Skills
 
 | Skill | Description |
@@ -99,7 +109,7 @@ One browser core, two hosts:
 
 - **`src/agent-browser.ts` and its helpers** are the core. They import neither Node nor a host package. Everything they need from a host is the small `BrowserHost` in `src/host.ts`: run a command, write a file, cwd, home, and session id.
 - **`src/index.ts` with `src/pi-host.ts`** is the pi extension. It uses `pi.exec` and `node:fs`.
-- **`hooks/register.tsx`** is the Claude Code mod. It uses `$.process` and `$.fs`.
+- **`hooks/register.tsx`** is the Claude Code mod. It uses `$.process` and `$.fs`, and holds every call to the engine, since the mod validator does not follow `$` across imports. `hooks/live.tsx` (the live view) and `hooks/handoff.tsx` (handoffs) take plain values and callbacks from it.
 - **`src/browser-present.ts`** turns calls into words and facts for both hosts. `src/browser-ui.ts` paints them for pi; the mod paints them for Claude Code.
 
 ## Development

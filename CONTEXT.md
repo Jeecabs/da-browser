@@ -1,8 +1,12 @@
 # da browser
 
-Private pi package for Lachlan's browser-control workflow. It wraps `agent-browser` as typed pi tools, commands, status UI, and session-scoped state.
+Lachlan's browser-control package for pi and Claude Code. It wraps `agent-browser` as typed tools, commands, status UI, and session-scoped state, with one browser core shared by both hosts.
 
 ## Language
+
+**Host**:
+The agent that runs da browser: pi (extension, `src/index.ts`) or Claude Code (mod, `hooks/register.tsx`). The browser core reaches a host only through `BrowserHost`.
+_Avoid_: Platform, client, port
 
 **da browser package**:
 A focused pi package that owns browser control, separate from the general `pi-extensions` bundle.
@@ -35,6 +39,8 @@ _Avoid_: Global permanent artifact store
 ## Relationships
 
 - **da browser** is installed separately from `pi-extensions`.
+- The browser core imports neither Node nor a **Host** package, because the Claude Code mod runs without Node. Host differences live in the adapters.
+- Each **Host** names its daemon sessions (`pi-…`, `cc-…`) and its **Controlled Tab** favicon (pointer, spark), so neither can adopt the other's tab and a glance says which agent holds one.
 - **Trusted Browser Automation** depends on the local Arc/Chromium auth context and CDP port.
 - **Trusted Browser Automation** cannot use agent-browser domain/WebRTC containment on pre-existing CDP pages. CDP commands run in a dedicated daemon session and explicitly clear inherited allowlists. Explicit-URL reads can still use them.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.

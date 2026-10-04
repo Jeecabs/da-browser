@@ -772,6 +772,21 @@ export async function runBrowserCommand(
   };
 }
 
+/**
+ * One agent-browser command on the pinned session, for a host's own surfaces (a live
+ * view's frames, a picker's poll) rather than a model tool: no artifact, no state change.
+ * With allowFailure a miss resolves "" instead of throwing.
+ */
+export async function runPinnedCommand(
+  host: BrowserHost,
+  state: BrowserState,
+  args: string[],
+  timeoutMs: number,
+  options: { allowFailure?: boolean } = {},
+): Promise<string> {
+  return runAgentBrowser(host, args, timeoutMs, { port: state.port, allowFailure: options.allowFailure });
+}
+
 export async function evalInBrowser(
   host: BrowserHost,
   state: BrowserState,

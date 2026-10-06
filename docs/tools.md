@@ -84,7 +84,7 @@ Reload pi if already running:
 
 ## Operational notes
 
-- Browser refs (`@e12`) come from the latest snapshot and go stale after DOM mutations.
+- Browser refs (`@e12`) come from snapshots and survive same-document updates for elements that stay; a replaced element or a navigation invalidates them.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
 - `/browser status` and `browser_status` actively probe the port and any previously known pinned binding. They report the daemon session, binding state, durable targetId, and sanitized tab-gone URL when available.
 - CDP actions use a dedicated, Pi-session-derived daemon session, enable strict `--pin-tab`, and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.

@@ -1,24 +1,12 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import {
-  checkpointBrowserPage,
   cleanupBrowserArtifacts,
-  clickBrowserElement,
   connectBrowser,
-  fillBrowserElement,
-  findBrowserElement,
-  openBrowserPage,
-  pressBrowserKey,
-  readBrowserContent,
-  snapshotBrowserPage,
-  tabBrowser,
   verifyConnection,
   CdpError,
-  type BrowserActionResult,
-  type FindAction,
-  type ReadArgsOptions,
-  type TabAction,
 } from '../src/agent-browser.ts'
+import { attachesAgentBrowserOverCdp } from '../src/agent-browser-args.ts'
 import {
   artifactName,
   chipText,
@@ -31,19 +19,17 @@ import {
   type Fact,
   type Presentation,
 } from '../src/browser-present.ts'
+import { BROWSER_GUIDELINES, BROWSER_TOOLS, prepareBrowserInput } from '../src/browser-tools.ts'
 import { env } from '../src/env.ts'
 import { CLAUDE_FAVICON_HREF } from './claude-favicon.ts'
-import { prepareCompatArguments } from '../src/extension-utils.ts'
 import type { BrowserHost } from '../src/host.ts'
 import {
   browserSummaryWithVersion,
   connectionHealth,
-  createBrowserState,
   mergeBrowserState,
   resolveBrowserPort,
   serializeBrowserState,
   type BrowserState,
-  type WaitMode,
 } from '../src/state.ts'
 
 // da-browser as a Claude Code mod. The browser core in ../src is shared with the pi
@@ -62,12 +48,9 @@ const GUIDELINES = `# da-browser
 
 The mcp__da-browser__browser_* tools drive the user's own authenticated Arc/Chromium through agent-browser, on one strictly pinned tab per session.
 
-- Element refs (@eN) come from the latest snapshot and go stale after any DOM change. Re-snapshot, or use browser_find, after navigation, click or fill.
-- Prefer browser_find when the target has a role, label, text, placeholder, alt, title or testid. It always performs its action; to look without acting use browser_snapshot.
-- After browser_open or a submission the page is mid-load; the default waitMode is networkidle.
-- This is the user's signed-in browser: never perform mutations the user did not ask for.
-- On tab_gone, isolation worked: recover explicitly with browser_tab new, or browser_connect. Do not retry blindly.
-- Never drive agent-browser through Bash with --cdp or connect; that bypasses the per-session tab pin.`
+${[...BROWSER_GUIDELINES, 'Never drive agent-browser through Bash with --cdp or connect; that bypasses the per-session tab pin.']
+  .map(line => `- ${line}`)
+  .join('\n')}`
 
 // ---------------------------------------------------------------------------
 // The host the core runs on: $.process and $.fs in place of pi.exec and node:fs
@@ -116,159 +99,13 @@ interface StoredRow {
   activity: string
   presentation?: Presentation
   failure?: { reason: string; hint?: string }
+  /** When it was written: $.store outlives sessions, so rows past ROW_TTL_MS are pruned. */
+  at?: number
 }
 
-interface BrowserTool {
-  name: string
-  description: string
-  properties: Record<string, unknown>
-  required?: string[]
-  compat?: Parameters<typeof prepareCompatArguments>[1]
-  run(host: BrowserHost, state: BrowserState, input: Input): Promise<BrowserActionResult>
-}
+const ROW_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
-const WAIT_MODE = { type: 'string', enum: ['none', 'load', 'networkidle'] }
-const REF = { type: 'string', description: 'Interactive element ref like @e12 or e12' }
-
-const TOOLS: BrowserTool[] = [
-  {
-    name: 'browser_status',
-    description: 'Probe agent-browser compatibility, live CDP state, and the strict session-to-tab binding.',
-    properties: {},
-    async run(host, state) {
-      const probe = await verifyConnection(host, state).catch(() => undefined)
-      return { summary: browserSummaryWithVersion(state, probe), diagnostics: { probe } }
-    },
-  },
-  {
-    name: 'browser_connect',
-    description: "Connect a strictly tab-pinned session to the user's Arc or Chromium over CDP.",
-    properties: { port: { type: 'number', description: 'Remote debugging port. Defaults to PI_BROWSER_PORT or 9222.' } },
-    compat: { aliases: { debugPort: 'port' }, numberFields: ['port'] },
-    async run(host, state, input) {
-      if (typeof input.port === 'number') state.port = resolveBrowserPort(input.port)
-      return connectBrowser(host, state)
-    },
-  },
-  {
-    name: 'browser_open',
-    description: 'Open a URL in the controlled tab and optionally wait for the page to settle.',
-    properties: { url: { type: 'string', description: 'Absolute URL to open' }, waitMode: WAIT_MODE },
-    required: ['url'],
-    run: (host, state, input) => openBrowserPage(host, state, input.url, (input.waitMode ?? 'networkidle') as WaitMode),
-  },
-  {
-    name: 'browser_snapshot',
-    description:
-      'Capture a page snapshot, interactive elements only by default. Scope with selector or depth on heavy SPAs; delta=true returns only changes since the last snapshot.',
-    properties: {
-      interactiveOnly: { type: 'boolean', description: 'Capture only interactive elements (default true)' },
-      includeUrls: { type: 'boolean', description: 'Include href URLs on link elements' },
-      depth: { type: 'number', description: 'Limit accessibility tree depth' },
-      selector: { type: 'string', description: 'Scope snapshot to a CSS selector subtree' },
-      delta: { type: 'boolean', description: 'Return only what changed since the last snapshot with the same options' },
-      label: { type: 'string', description: 'Optional artifact label' },
-    },
-    compat: { aliases: { interactive: 'interactiveOnly', scope: 'selector' }, booleanFields: ['interactiveOnly', 'includeUrls', 'delta'], numberFields: ['depth'] },
-    run: (host, state, input) =>
-      snapshotBrowserPage(host, state, input.interactiveOnly ?? true, input.label ?? 'snapshot', {
-        urls: input.includeUrls,
-        depth: input.depth,
-        selector: input.selector,
-        delta: input.delta,
-      }),
-  },
-  {
-    name: 'browser_read',
-    description: 'Fetch agent-readable text from a URL (markdown/llms.txt aware), or read the rendered controlled tab when url is omitted.',
-    properties: {
-      url: { type: 'string', description: 'URL to fetch. Omit to read the controlled tab.' },
-      filter: { type: 'string', description: 'Narrow to matching heading sections' },
-      outline: { type: 'boolean', description: 'Return a compact heading outline' },
-    },
-    run: (host, state, input) => readBrowserContent(host, state, input as ReadArgsOptions),
-  },
-  {
-    name: 'browser_click',
-    description: 'Click an element by its @ref from the latest snapshot; re-snapshots afterwards by default.',
-    properties: { ref: REF, waitMode: WAIT_MODE, resnapshot: { type: 'boolean' } },
-    required: ['ref'],
-    compat: { aliases: { element: 'ref', selector: 'ref' }, booleanFields: ['resnapshot'] },
-    run: (host, state, input) =>
-      clickBrowserElement(host, state, input.ref, (input.waitMode ?? 'networkidle') as WaitMode, input.resnapshot ?? true, false),
-  },
-  {
-    name: 'browser_find',
-    description:
-      'Find an element by role/text/label/placeholder/alt/title/testid (or first/last/nth CSS) and act on it in one step. Always acts.',
-    properties: {
-      locator: { type: 'string', enum: ['role', 'text', 'label', 'placeholder', 'alt', 'title', 'testid', 'first', 'last', 'nth'] },
-      value: { type: 'string', description: 'Locator value, or a CSS selector for first/last/nth' },
-      action: { type: 'string', enum: ['click', 'fill', 'type', 'hover', 'focus', 'check', 'uncheck'] },
-      text: { type: 'string', description: 'Text for fill/type' },
-      name: { type: 'string', description: 'Accessible-name filter (role locator only)' },
-      nthIndex: { type: 'number' },
-      exact: { type: 'boolean' },
-      waitMode: WAIT_MODE,
-      resnapshot: { type: 'boolean' },
-    },
-    required: ['locator', 'value', 'action'],
-    compat: { aliases: { index: 'nthIndex' }, booleanFields: ['exact', 'resnapshot'], numberFields: ['nthIndex'] },
-    run: (host, state, input) =>
-      findBrowserElement(host, state, {
-        locator: input.locator,
-        value: input.value,
-        action: input.action as FindAction,
-        nthIndex: input.nthIndex,
-        text: input.text,
-        name: input.name,
-        exact: input.exact,
-        waitMode: input.waitMode as WaitMode | undefined,
-        resnapshot: input.resnapshot,
-      }),
-  },
-  {
-    name: 'browser_fill',
-    description: 'Fill an input by @ref.',
-    properties: { ref: REF, text: { type: 'string' }, waitMode: WAIT_MODE },
-    required: ['ref', 'text'],
-    compat: { aliases: { element: 'ref', value: 'text' } },
-    run: (host, state, input) => fillBrowserElement(host, state, input.ref, input.text, (input.waitMode ?? 'none') as WaitMode),
-  },
-  {
-    name: 'browser_press',
-    description: 'Press a key such as Enter, Tab, Escape or Control+a.',
-    properties: { key: { type: 'string' }, waitMode: WAIT_MODE },
-    required: ['key'],
-    run: (host, state, input) => pressBrowserKey(host, state, input.key, (input.waitMode ?? 'none') as WaitMode),
-  },
-  {
-    name: 'browser_tab',
-    description: 'List, open, close or switch tabs by id (t1), label, or durable CDP targetId.',
-    properties: {
-      action: { type: 'string', enum: ['list', 'new', 'close', 'switch'] },
-      url: { type: 'string' },
-      label: { type: 'string' },
-      tab: { type: 'string' },
-    },
-    required: ['action'],
-    run: (host, state, input) => tabBrowser(host, state, { action: input.action as TabAction, url: input.url, label: input.label, tab: input.tab }),
-  },
-  {
-    name: 'browser_checkpoint',
-    description: 'Save a screenshot plus an interactive snapshot for verification. ifChanged=true skips an unchanged capture.',
-    properties: {
-      label: { type: 'string', description: 'What is being verified' },
-      annotate: { type: 'boolean' },
-      ifChanged: { type: 'boolean' },
-      delta: { type: 'boolean' },
-    },
-    required: ['label'],
-    compat: { booleanFields: ['annotate', 'ifChanged', 'delta'] },
-    run: (host, state, input) =>
-      checkpointBrowserPage(host, state, input.label, { annotate: input.annotate, ifChanged: input.ifChanged, delta: input.delta }),
-  },
-]
+const BASH_DENY = `${PLUGIN}: agent-browser over CDP from Bash bypasses this session's pinned tab. Use the ${PREFIX}browser_* tools (browser_connect, browser_open, browser_snapshot, ...) instead.`
 
 // ---------------------------------------------------------------------------
 // The module
@@ -325,6 +162,29 @@ async function persist($: $): Promise<void> {
   if (state) await $.store.set(storeKey, serializeBrowserState(state))
 }
 
+/**
+ * Off the start path, as pi does on start: probe the CLI version and the port, so state
+ * restored from the store is checked rather than assumed, then prune old tool rows. Rows
+ * written before rows were dated go too; their transcripts draw the engine's own row.
+ */
+async function startupChecks($: $): Promise<void> {
+  const current = await ready($)
+  const probe = await verifyConnection(await makeHost($), current).catch(() => undefined)
+  if (probe && !probe.agentBrowserCompatible) {
+    $.ui.toast(
+      `da-browser requires agent-browser >=${probe.requiredAgentBrowserVersion}; found ${probe.agentBrowserVersion ?? 'not found'}. Run: npm i -g agent-browser@latest`,
+    )
+  }
+  refreshChip($)
+  await persist($)
+  const now = Date.now()
+  for (const key of await $.store.keys()) {
+    if (!key.startsWith('row:')) continue
+    const row = (await $.store.get(key)) as StoredRow | undefined
+    if (!row?.at || now - row.at > ROW_TTL_MS) await $.store.delete(key)
+  }
+}
+
 /** The status line says where the browser is, in plain words; hidden with nothing to say. */
 function refreshChip($: $): void {
   if (!state) return
@@ -362,24 +222,35 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await ready($)
-    for (const tool of TOOLS) {
-      await $.tool.register({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: { type: 'object', properties: tool.properties, required: tool.required ?? [] },
-      })
+    for (const tool of BROWSER_TOOLS) {
+      await $.tool.register({ name: tool.name, description: tool.description, inputSchema: tool.parameters })
     }
     await $.command.register({ name: 'browser', description: 'da-browser: connect [port] | status | cleanup' })
     refreshChip($)
+    $.clock.after(0, () => void startupChecks($).catch(() => {}))
     return started
   })
 
-  for (const tool of TOOLS) {
+  // A /clear goes on under a new session id with no session.start. Forget this
+  // conversation's browser, so the next call loads the new session's own state and tab.
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') {
+      state = undefined
+      snapshotCache = undefined
+      snapshotComparable = false
+      snapshotUrl = undefined
+      lastChip = null
+      $.ui.status(undefined)
+    }
+    return next(e)
+  })
+
+  for (const tool of BROWSER_TOOLS) {
     on('tool.call', { tool: `${PREFIX}${tool.name}` }, async ($, e) => {
       const current = await ready($)
       const host = await makeHost($)
-      const { tool: _tool, tool_use_id: id, ...raw } = e as unknown as Input
-      const input = tool.compat ? (prepareCompatArguments(raw, tool.compat) as Input) : raw
+      const { tool: _tool, tool_use_id: id, consent: _consent, agentId: _agentId, ...raw } = e as unknown as Input
+      const input = prepareBrowserInput(tool, raw)
 
       const snapshot = await latestSnapshot($)
       const before = { url: current.currentUrl, snapshot, comparable: snapshotComparable && snapshotUrl === current.currentUrl }
@@ -410,13 +281,13 @@ export const register: Register = on => {
         })
         // A plugin tool's result is text the model reads; the row's facts live in the store,
         // keyed by the call, so a resumed transcript draws the same row.
-        await $.store.set(`row:${id}`, { activity: activity.text, presentation })
+        await $.store.set(`row:${id}`, { activity: activity.text, presentation, at: Date.now() })
         trail.end(id, true)
         return { result: text }
       } catch (error) {
         handleFailure(error)
         const message = error instanceof Error ? error.message : String(error)
-        await $.store.set(`row:${id}`, { activity: activity.text, failure: explainFailure(message) })
+        await $.store.set(`row:${id}`, { activity: activity.text, failure: explainFailure(message), at: Date.now() })
         trail.end(id, false)
         return { deny: message }
       } finally {
@@ -424,7 +295,7 @@ export const register: Register = on => {
         refreshChip($)
         await persist($)
       }
-    })
+    }).catch(($, _e, next) => ({ deny: `${PLUGIN}: ${next.error.message ?? next.error.kind}` }))
   }
 
   on('command.run', { command: 'browser' }, async ($, e) => {
@@ -466,16 +337,9 @@ export const register: Register = on => {
 
   // Raw agent-browser over CDP skips the per-session pin and can take over another
   // session's tab. Version checks and other non-attaching commands still run.
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    // Only where agent-browser runs as a command (line start, or after ; & | ( ), so a
-    // commit message or PR body that merely mentions it is not refused.
-    const attaches =
-      /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(e.command)
-    if (!attaches) return next(e)
-    return {
-      deny: `${PLUGIN}: agent-browser over CDP from Bash bypasses this session's pinned tab. Use the ${PREFIX}browser_* tools (browser_connect, browser_open, browser_snapshot, ...) instead.`,
-    }
-  })
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => (attachesAgentBrowserOverCdp(e.command) ? { deny: BASH_DENY } : next(e)))
+    // A guard that fails refuses, rather than letting an unchecked command through.
+    .catch(($, e, next) => (next.called ? next(e) : { deny: `${PLUGIN}: the Bash guard failed, so the command was refused.` }))
 
   // The band: what the browser is doing right now, only during a burst.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

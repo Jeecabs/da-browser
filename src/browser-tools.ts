@@ -572,7 +572,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
     name: "browser_record",
     label: "Browser Record",
     description:
-      "Start, restart, or stop video recording of the active tab for QA artifact capture. cursor=true draws the pointer and click ripples into the video; contactSheet=true also saves a timestamped PNG summary that is far cheaper to inspect than the video. start spawns a fresh browser context (cookies and localStorage preserved), so re-snapshot before the next action.",
+      "Start, restart, or stop video recording of the controlled tab for QA artifact capture. Start records the tab in place: no new tab or context, and refs stay valid. A hidden tab is brought to the front first, since Chrome does not paint background tabs and the video would freeze. Navigation is followed; switching tabs is not, so use restart to film another tab. cursor=true draws the pointer and click ripples into the video; contactSheet=true also saves a timestamped PNG summary that is far cheaper to inspect than the video; url films a cold page load from its first frame. A take left idle for an hour is lost with its daemon.",
     promptSnippet: "Capture a video of the page during a workflow for visual verification",
     parameters: {
       type: "object",
@@ -584,6 +584,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
         cursor: { type: "boolean", description: "Render an animated pointer and click ripple into the video" },
         contactSheet: { type: "boolean", description: "Also save a timestamped PNG summary of the visual changes" },
         contactSheetThreshold: { type: "number", description: "Pixel-change ratio (0-1) that selects a sheet frame; implies contactSheet" },
+        url: { type: "string", description: "Navigate the controlled tab here and start once it loads (start and restart)" },
       },
       required: ["action"],
     },
@@ -601,6 +602,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
         cursor: input.cursor,
         contactSheet: input.contactSheet,
         contactSheetThreshold: input.contactSheetThreshold,
+        url: input.url,
       }),
   },
   {

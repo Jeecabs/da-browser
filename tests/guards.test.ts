@@ -555,6 +555,16 @@ test("buildRecordArgs covers presentation options, restart, and stop", () => {
     "--json",
   ]);
   assert.deepEqual(buildRecordArgs({ action: "stop" }), ["record", "stop", "--json"]);
+  // The url is the CLI's positional after the path: navigate, then start once it loads.
+  assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm", url: "https://example.com", fps: 60 }), [
+    "record",
+    "start",
+    "/tmp/x.webm",
+    "https://example.com",
+    "--fps",
+    "60",
+    "--json",
+  ]);
   assert.throws(() => buildRecordArgs({ action: "start" }), /requires an output file path/);
   assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 0 }), /between 1 and 60/);
   assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 61 }), /between 1 and 60/);
@@ -722,6 +732,10 @@ test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(classifyCdpError("Protocol error: No target with given id found"), "target-gone");
   assert.equal(classifyCdpError("Execution context was destroyed"), "target-gone");
   assert.equal(classifyCdpError("Timeout 30000ms exceeded"), "page-busy");
+  assert.equal(
+    classifyCdpError("Recording already active\nCommand failed: agent-browser --pin-tab --idle-timeout 1h record start /tmp/x.webm"),
+    "unknown",
+  );
   // Action-level errors must NOT be classified as connection failures (no false retry).
   assert.equal(classifyCdpError("Element not found: @e5"), "unknown");
   assert.equal(classifyCdpError(""), "unknown");

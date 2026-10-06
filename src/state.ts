@@ -6,6 +6,8 @@ export type WaitMode = "none" | "load" | "networkidle";
 export interface BrowserRecordingState {
   file: string;
   startedAt: number;
+  /** A recording with a contact sheet, so a restart can report the finished take's sheet. */
+  contactSheet?: boolean;
 }
 
 export interface BrowserState {
@@ -172,7 +174,7 @@ export function resolveControlBannerEnabled(): boolean {
 function cloneRecording(input?: BrowserRecordingState): BrowserRecordingState | undefined {
   if (!input || typeof input !== "object") return undefined;
   if (typeof input.file !== "string" || typeof input.startedAt !== "number") return undefined;
-  return { file: input.file, startedAt: input.startedAt };
+  return { file: input.file, startedAt: input.startedAt, ...(input.contactSheet === true ? { contactSheet: true } : {}) };
 }
 
 // How long a verified connection stays "fresh" before the widget downgrades to \u25D0 stale.

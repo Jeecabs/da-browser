@@ -7,6 +7,7 @@ import type { TSchema } from "typebox";
 import {
   cleanupBrowserArtifacts,
   connectBrowser,
+  stopCapturesNow,
   verifyConnection,
   CdpError,
   type BrowserActionResult,
@@ -213,8 +214,14 @@ export default function (pi: ExtensionAPI) {
     refreshUi(ctx);
   });
 
-  pi.on("session_shutdown", async (_event, _ctx) => {
+  pi.on("session_shutdown", async (event, ctx) => {
     trailWidget?.dispose();
+    // A reload keeps the session and its daemon, so a recording carries on through it. Any
+    // other end leaves the daemon behind, and its exit would truncate the capture.
+    if (event.reason !== "reload" && (state.recording || state.har || state.tracing)) {
+      await stopCapturesNow(piHost(pi, ctx), state);
+      persistCommandState();
+    }
     await cleanupBrowserArtifacts(state);
   });
 
@@ -250,6 +257,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (subcommand === "cleanup") {
+          await stopCapturesNow(piHost(pi, ctx), state);
           await cleanupBrowserArtifacts(state);
           state.lastAction = "cleanup";
           state.lastError = undefined;

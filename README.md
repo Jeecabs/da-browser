@@ -12,7 +12,7 @@ Browser control for [pi](https://github.com/earendil-works/pi) and [Claude Code]
 
 - `agent-browser` 0.38.1 or newer on `PATH`: `npm install -g agent-browser@latest`
 - Arc or Chromium with remote debugging: `open -na "Arc" --args --remote-debugging-port=9222`
-- `ffmpeg` on `PATH` only for `browser_record` (`brew install ffmpeg`)
+- `ffmpeg` on `PATH` only for `browser_record`, with the libvpx (WebM) and libx264 (MP4) encoders (`brew install ffmpeg` has both). `agent-browser doctor` checks them.
 
 Each host checks the minimum CLI version on session start and before every action. `/browser status` shows the installed version.
 

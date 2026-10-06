@@ -208,7 +208,10 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
         ref: REF,
         waitMode: WAIT_MODE,
         resnapshot: { type: "boolean", description: "Capture a fresh interactive snapshot after clicking", default: true },
-        human: { type: "boolean", description: "Approach along a curved, eased pointer path for hover-gated or bot-checked UI" },
+        human: {
+          type: "boolean",
+          description: "Approach along a curved, eased pointer path even when DA_BROWSER_INPUT_MODE is instant; the default mode already does",
+        },
       },
       required: ["ref"],
     },

@@ -13,13 +13,15 @@ export const INPUT_MODES = ["instant", "smooth", "human"] as const;
 export type InputMode = (typeof INPUT_MODES)[number];
 
 /**
- * Session-wide pointer movement (agent-browser 0.38 `--input-mode`). `instant` is the CLI
- * default and stays implicit; `smooth`/`human` make recordings read as real cursor motion
- * and defeat naive "no mousemove" bot checks.
+ * Session-wide pointer movement (agent-browser 0.38 `--input-mode`), human by default:
+ * clicks and drags travel a curved, eased path, so hover-gated menus open on the way,
+ * pointer-path bot checks pass, and recordings show the cursor move instead of jump.
+ * ponytail: about 1s per click against 40ms instant; DA_BROWSER_INPUT_MODE=instant or
+ * smooth (a 200ms glide) trades that back. Always passed, as only an explicit flag resets
+ * a daemon that ran under another mode.
  */
-export function resolveInputMode(env: Record<string, string | undefined> = hostEnv): InputMode | undefined {
-  const raw = env.DA_BROWSER_INPUT_MODE?.trim().toLowerCase();
-  if (!raw || raw === "instant") return undefined;
+export function resolveInputMode(env: Record<string, string | undefined> = hostEnv): InputMode {
+  const raw = env.DA_BROWSER_INPUT_MODE?.trim().toLowerCase() || "human";
   if (!(INPUT_MODES as readonly string[]).includes(raw)) {
     throw new Error(`DA_BROWSER_INPUT_MODE must be one of ${INPUT_MODES.join(", ")} (got ${raw}).`);
   }
@@ -66,8 +68,6 @@ export function buildCdpInvocationArgs(
     throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
   }
 
-  const inputMode = resolveInputMode();
-
   return [
     "--namespace",
     DA_BROWSER_NAMESPACE,
@@ -76,7 +76,8 @@ export function buildCdpInvocationArgs(
     "--pin-tab",
     "--idle-timeout",
     DA_BROWSER_IDLE_TIMEOUT,
-    ...(inputMode ? ["--input-mode", inputMode] : []),
+    "--input-mode",
+    resolveInputMode(),
     "--allowed-domains",
     "",
     "--cdp",

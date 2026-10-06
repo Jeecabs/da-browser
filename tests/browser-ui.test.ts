@@ -309,6 +309,23 @@ describe("presentResult", () => {
         assert.deepEqual(result.files, ["/tmp/da-browser/x/2026-10-02T03-12-45-123Z-after-save.png"]);
         assert.equal(result.image, result.files[0]);
     });
+
+    it("shows a recording: no unwritten file at start, the finished take on restart, length and still frames at stop", () => {
+        const take = { file: "/tmp/r/take-2.webm", contactSheetPath: "/tmp/r/take-2.contact-sheet.png" };
+        const start = present("browser_record", { params: { action: "start" }, details: { ...take, broughtForward: true } });
+        assert.deepEqual(facts(start), ["warning:recording", "dim:brought tab forward"]);
+        assert.deepEqual(start.files, []);
+
+        const previous = { previousPath: "/tmp/r/take-1.webm", previousContactSheetPath: "/tmp/r/take-1.contact-sheet.png" };
+        const restart = present("browser_record", { params: { action: "restart" }, details: { ...take, ...previous } });
+        assert.deepEqual(restart.files, [previous.previousPath, previous.previousContactSheetPath]);
+        assert.equal(restart.image, previous.previousContactSheetPath);
+
+        const stop = present("browser_record", { params: { action: "stop" }, details: { ...take, durationMs: 12_400, stillFrame: true } });
+        assert.deepEqual(facts(stop), ["muted:12s video", "warning:still frame: the tab never repainted"]);
+        assert.deepEqual(stop.files, [take.file, take.contactSheetPath]);
+        assert.equal(stop.image, take.contactSheetPath);
+    });
 });
 
 describe("resultLine", () => {

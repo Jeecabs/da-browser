@@ -81,6 +81,7 @@ Reload pi if already running:
 
 - `/browser connect 9333`, `browser_connect({ port: 9333 })`, or `PI_BROWSER_PORT=9333`
 - `DA_BROWSER_INPUT_MODE=smooth|human` moves the pointer along real paths for every action in the session
+- `PI_BROWSER_CONTROL_BANNER=0` turns off the controlled-tab edge glow and favicon, which are page content and otherwise appear in every recording and screenshot
 
 ## Operational notes
 
@@ -90,7 +91,9 @@ Reload pi if already running:
 - CDP actions use a dedicated, Pi-session-derived daemon session, enable strict `--pin-tab`, and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
 - The controlled tab binding survives daemon restarts. Other Pi sessions and user-opened tabs cannot steal the active target.
 - If the pinned tab disappears, commands fail safely with `tab_gone` and retain its `targetId` plus sanitized last URL when available. Recover with `browser_tab` new/switch, or use `browser_connect` as an explicit request for a fresh controlled tab. Only transient non-pin target failures retry automatically.
-- `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video.
+- `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` (or `contactSheetThreshold`) also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video. `url` navigates first and starts once the page loads, to film a cold load.
+- A recording films the controlled tab in place. Chrome does not paint a background tab, so start brings a hidden tab to the front, and stop warns when the tab never painted (a minimised or covered window) or was hidden when the take ended. A tab hidden mid-take and shown again before stop goes unwarned. Navigation in the tab is followed; `browser_tab` new/switch is not, so `restart` to film the new tab.
+- A daemon that exits mid-take truncates the video. Each host stops a running recording, HAR or trace when its session ends, and `/browser cleanup` stops them first. A take left idle for an hour is still lost with its daemon, and status then reports it.
 - Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.

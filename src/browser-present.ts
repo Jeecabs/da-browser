@@ -708,8 +708,17 @@ export function presentResult(input: ResultInput): Presentation {
       break;
     case "har":
     case "trace":
+      if (params.action !== "stop") facts.push({ text: "capturing", tone: "warning" });
+      break;
     case "record":
-      if (params.action !== "stop") facts.push({ text: name === "record" ? "recording" : "capturing", tone: "warning" });
+      if (params.action === "stop") {
+        if (typeof details.durationMs === "number") facts.push({ text: `${seconds(details.durationMs)} video`, tone: "muted" });
+        if (details.stillFrame === true) facts.push({ text: "still frame: the tab never repainted", tone: "warning" });
+        else if (details.hiddenAtStop === true) facts.push({ text: "froze: the tab was hidden at the end", tone: "warning" });
+      } else {
+        facts.push({ text: "recording", tone: "warning" });
+        if (details.broughtForward === true) facts.push({ text: "brought tab forward", tone: "dim" });
+      }
       break;
     case "status": {
       const probe = details.probe && typeof details.probe === "object" ? (details.probe as Record<string, unknown>) : undefined;
@@ -721,13 +730,19 @@ export function presentResult(input: ResultInput): Presentation {
     }
   }
 
-  const hidden = new Set([...input.snapshotFiles, ...stringList(details.snapshotFile)]);
+  // A take being recorded is not on disk yet; a restart's finished take is.
+  const recording = name === "record" && params.action !== "stop";
+  const unwritten = recording ? [...stringList(details.file), ...stringList(details.contactSheetPath)] : [];
+  const hidden = new Set([...input.snapshotFiles, ...stringList(details.snapshotFile), ...unwritten]);
   const files = [
     ...new Set([
       ...stringList(details.screenshotFile),
       ...stringList(details.artifacts),
       ...stringList(details.fullOutputFile),
       ...stringList(details.file),
+      ...stringList(details.contactSheetPath),
+      ...stringList(details.previousPath),
+      ...stringList(details.previousContactSheetPath),
     ]),
   ].filter((file) => !hidden.has(file));
   const image = files.find((file) => /\.(png|jpe?g)$/i.test(file));

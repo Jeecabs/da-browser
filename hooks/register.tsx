@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import {
   cleanupBrowserArtifacts,
   connectBrowser,
+  stopCapturesNow,
   verifyConnection,
   CdpError,
 } from '../src/agent-browser.ts'
@@ -189,7 +190,9 @@ async function startupChecks($: $): Promise<void> {
 function refreshChip($: $): void {
   if (!state) return
   // Claude Code already labels the line with the plugin's name, so the chip skips its own.
-  const chip = chipText({ fg: (_color, text) => text }, state, connectionHealth(state), undefined, false) || undefined
+  // The line is plain text: where pi colours a running capture (rec, trace, har), mark it.
+  const plain = { fg: (_color: unknown, text: string) => (['rec', 'trace', 'har'].includes(text) ? `⏺ ${text}` : text) }
+  const chip = chipText(plain, state, connectionHealth(state), undefined, false) || undefined
   if (chip === lastChip) return
   lastChip = chip
   $.ui.status(chip)
@@ -231,9 +234,15 @@ export const register: Register = on => {
     return started
   })
 
-  // A /clear goes on under a new session id with no session.start. Forget this
-  // conversation's browser, so the next call loads the new session's own state and tab.
+  // Every end, a /clear included, leaves this session's daemon behind, and its exit would
+  // truncate a running capture: stop it while the ending session's id still names the daemon.
+  // A /clear then goes on under a new session id with no session.start, so forget this
+  // conversation's browser and let the next call load the new session's own state and tab.
   on('session.end', async ($, e, next) => {
+    if (state && (state.recording || state.har || state.tracing)) {
+      await stopCapturesNow({ ...(await makeHost($)), sessionId: e.sessionId }, state)
+      await persist($)
+    }
     if (e.reason === 'clear') {
       state = undefined
       snapshotCache = undefined
@@ -314,6 +323,7 @@ export const register: Register = on => {
         return { text: browserSummaryWithVersion(current, probe) }
       }
       if (subcommand === 'cleanup') {
+        await stopCapturesNow(host, current)
         await cleanupBrowserArtifacts(current)
         current.lastAction = 'cleanup'
         current.lastError = undefined
@@ -386,7 +396,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     const tool = String(e.props.tool)
     if (!tool.startsWith(PREFIX)) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Link } = $.ui.resolve(e)
     const row = (await $.store.get(`row:${e.requestId}`)) as StoredRow | undefined
     if (!row) return next(e)
     if (row.failure) {
@@ -398,10 +408,9 @@ export const register: Register = on => {
       )
     }
     const presentation = row.presentation
-    const files = presentation?.files.map(file => artifactName(file)) ?? []
-    if (!presentation || presentation.facts.length + files.length === 0) return <Box />
+    if (!presentation || presentation.facts.length + presentation.files.length === 0) return <Box />
     const tone = (fact: Fact) => (fact.tone === 'success' || fact.tone === 'error' || fact.tone === 'warning' ? fact.tone : undefined)
-    return (
+    const line = (
       <Text>
         {'  '}
         {presentation.facts.map((fact, index) => (
@@ -410,13 +419,24 @@ export const register: Register = on => {
             {fact.text}
           </Text>
         ))}
-        {files.map((file, index) => (
+        {presentation.files.map((file, index) => (
           <Text key={`file-${index}`} dimColor>
             {presentation.facts.length + index > 0 ? '  ' : ''}
-            {file}
+            <Link href={encodeURI(`file://${file}`)} label={artifactName(file)} />
           </Text>
         ))}
       </Text>
+    )
+    // Only the terminal draws pictures, and only from a PNG file.
+    const image = presentation.image
+    if (!image?.endsWith('.png') || e.surface !== 'terminal') return line
+    const { Image } = $.ui.resolve(e)
+    // ponytail: a fixed box like pi's thumbnail; read the PNG's size if sheets look stretched.
+    return (
+      <Box flexDirection="column">
+        {line}
+        <Image source={{ file: image, format: 'png' }} columns={36} rows={12} alt={artifactName(image)} />
+      </Box>
     )
   })
 }

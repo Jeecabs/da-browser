@@ -555,6 +555,16 @@ test("buildRecordArgs covers presentation options, restart, and stop", () => {
     "--json",
   ]);
   assert.deepEqual(buildRecordArgs({ action: "stop" }), ["record", "stop", "--json"]);
+  // The url is the CLI's positional after the path: navigate, then start once it loads.
+  assert.deepEqual(buildRecordArgs({ action: "start", file: "/tmp/x.webm", url: "https://example.com", fps: 60 }), [
+    "record",
+    "start",
+    "/tmp/x.webm",
+    "https://example.com",
+    "--fps",
+    "60",
+    "--json",
+  ]);
   assert.throws(() => buildRecordArgs({ action: "start" }), /requires an output file path/);
   assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 0 }), /between 1 and 60/);
   assert.throws(() => buildRecordArgs({ action: "start", file: "/tmp/x.webm", fps: 61 }), /between 1 and 60/);

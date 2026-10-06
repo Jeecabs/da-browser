@@ -85,6 +85,19 @@ export function buildCdpInvocationArgs(
   ];
 }
 
+/**
+ * Whether a shell command runs agent-browser attached over CDP (`--cdp`, `--auto-connect`,
+ * `connect`), which skips the per-session pin and can take over another session's tab.
+ * Matched only where agent-browser runs as a command (line start, or after ; & | ( ), so a
+ * commit message or PR body that merely mentions it passes, as do version checks.
+ * ponytail: spelling match, best effort; a script file or `xargs` that runs it gets past.
+ */
+export function attachesAgentBrowserOverCdp(command: string): boolean {
+  return /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(
+    command,
+  );
+}
+
 export interface SnapshotArgsOptions {
   interactiveOnly?: boolean;
   /** Include href URLs on link elements (`-u`). */

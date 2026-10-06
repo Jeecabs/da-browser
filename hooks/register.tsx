@@ -6,6 +6,7 @@ import {
   verifyConnection,
   CdpError,
 } from '../src/agent-browser.ts'
+import { attachesAgentBrowserOverCdp } from '../src/agent-browser-args.ts'
 import {
   artifactName,
   chipText,
@@ -98,7 +99,13 @@ interface StoredRow {
   activity: string
   presentation?: Presentation
   failure?: { reason: string; hint?: string }
+  /** When it was written: $.store outlives sessions, so rows past ROW_TTL_MS are pruned. */
+  at?: number
 }
+
+const ROW_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+const BASH_DENY = `${PLUGIN}: agent-browser over CDP from Bash bypasses this session's pinned tab. Use the ${PREFIX}browser_* tools (browser_connect, browser_open, browser_snapshot, ...) instead.`
 
 // ---------------------------------------------------------------------------
 // The module
@@ -155,6 +162,29 @@ async function persist($: $): Promise<void> {
   if (state) await $.store.set(storeKey, serializeBrowserState(state))
 }
 
+/**
+ * Off the start path, as pi does on start: probe the CLI version and the port, so state
+ * restored from the store is checked rather than assumed, then prune old tool rows. Rows
+ * written before rows were dated go too; their transcripts draw the engine's own row.
+ */
+async function startupChecks($: $): Promise<void> {
+  const current = await ready($)
+  const probe = await verifyConnection(await makeHost($), current).catch(() => undefined)
+  if (probe && !probe.agentBrowserCompatible) {
+    $.ui.toast(
+      `da-browser requires agent-browser >=${probe.requiredAgentBrowserVersion}; found ${probe.agentBrowserVersion ?? 'not found'}. Run: npm i -g agent-browser@latest`,
+    )
+  }
+  refreshChip($)
+  await persist($)
+  const now = Date.now()
+  for (const key of await $.store.keys()) {
+    if (!key.startsWith('row:')) continue
+    const row = (await $.store.get(key)) as StoredRow | undefined
+    if (!row?.at || now - row.at > ROW_TTL_MS) await $.store.delete(key)
+  }
+}
+
 /** The status line says where the browser is, in plain words; hidden with nothing to say. */
 function refreshChip($: $): void {
   if (!state) return
@@ -197,14 +227,29 @@ export const register: Register = on => {
     }
     await $.command.register({ name: 'browser', description: 'da-browser: connect [port] | status | cleanup' })
     refreshChip($)
+    $.clock.after(0, () => void startupChecks($).catch(() => {}))
     return started
+  })
+
+  // A /clear goes on under a new session id with no session.start. Forget this
+  // conversation's browser, so the next call loads the new session's own state and tab.
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') {
+      state = undefined
+      snapshotCache = undefined
+      snapshotComparable = false
+      snapshotUrl = undefined
+      lastChip = null
+      $.ui.status(undefined)
+    }
+    return next(e)
   })
 
   for (const tool of BROWSER_TOOLS) {
     on('tool.call', { tool: `${PREFIX}${tool.name}` }, async ($, e) => {
       const current = await ready($)
       const host = await makeHost($)
-      const { tool: _tool, tool_use_id: id, consent: _consent, ...raw } = e as unknown as Input
+      const { tool: _tool, tool_use_id: id, consent: _consent, agentId: _agentId, ...raw } = e as unknown as Input
       const input = prepareBrowserInput(tool, raw)
 
       const snapshot = await latestSnapshot($)
@@ -236,13 +281,13 @@ export const register: Register = on => {
         })
         // A plugin tool's result is text the model reads; the row's facts live in the store,
         // keyed by the call, so a resumed transcript draws the same row.
-        await $.store.set(`row:${id}`, { activity: activity.text, presentation })
+        await $.store.set(`row:${id}`, { activity: activity.text, presentation, at: Date.now() })
         trail.end(id, true)
         return { result: text }
       } catch (error) {
         handleFailure(error)
         const message = error instanceof Error ? error.message : String(error)
-        await $.store.set(`row:${id}`, { activity: activity.text, failure: explainFailure(message) })
+        await $.store.set(`row:${id}`, { activity: activity.text, failure: explainFailure(message), at: Date.now() })
         trail.end(id, false)
         return { deny: message }
       } finally {
@@ -250,7 +295,7 @@ export const register: Register = on => {
         refreshChip($)
         await persist($)
       }
-    })
+    }).catch(($, _e, next) => ({ deny: `${PLUGIN}: ${next.error.message ?? next.error.kind}` }))
   }
 
   on('command.run', { command: 'browser' }, async ($, e) => {
@@ -292,16 +337,9 @@ export const register: Register = on => {
 
   // Raw agent-browser over CDP skips the per-session pin and can take over another
   // session's tab. Version checks and other non-attaching commands still run.
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    // Only where agent-browser runs as a command (line start, or after ; & | ( ), so a
-    // commit message or PR body that merely mentions it is not refused.
-    const attaches =
-      /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(e.command)
-    if (!attaches) return next(e)
-    return {
-      deny: `${PLUGIN}: agent-browser over CDP from Bash bypasses this session's pinned tab. Use the ${PREFIX}browser_* tools (browser_connect, browser_open, browser_snapshot, ...) instead.`,
-    }
-  })
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => (attachesAgentBrowserOverCdp(e.command) ? { deny: BASH_DENY } : next(e)))
+    // A guard that fails refuses, rather than letting an unchecked command through.
+    .catch(($, e, next) => (next.called ? next(e) : { deny: `${PLUGIN}: the Bash guard failed, so the command was refused.` }))
 
   // The band: what the browser is doing right now, only during a burst.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -46,6 +46,7 @@ _Avoid_: Global permanent artifact store
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.
 - **da browser** checks its minimum supported `agent-browser` version at session start and before each action. Newer versions remain valid.
 - Every **Controlled Tab** uses agent-browser strict `--pin-tab` with a named, Pi-session-derived daemon. Its target binding survives daemon restarts, and user/other-session tabs must never steal it.
+- The pointer moves as a person's would by default (`--input-mode human`): clicks and drags take a curved path, at about a second each, rather than jumping.
 - A host's daemon exits after an hour without commands (`--idle-timeout`, which agent-browser does not apply to attached browsers by default), and the next command respawns it bound to the same **Controlled Tab**.
 - A strict `tab_gone` is a safe isolation stop, not a retry signal. Preserve its durable target id and sanitized last URL; recovery must be explicit through tab new/switch or browser connect.
 - **Controlled Tab** state is session/branch scoped, not global truth.

@@ -1,6 +1,6 @@
 {
   "name": "da-browser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Drive your own Arc or Chromium from Claude Code through agent-browser, with a strictly pinned tab per session.",
   "author": { "name": "Jeecabs" },
   "homepage": "https://jeecabs.github.io/pi-tooling/da-browser/",

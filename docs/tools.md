@@ -80,7 +80,7 @@ Reload pi if already running:
 ## Environment overrides
 
 - `/browser connect 9333`, `browser_connect({ port: 9333 })`, or `PI_BROWSER_PORT=9333`
-- `DA_BROWSER_INPUT_MODE=smooth|human` moves the pointer along real paths for every action in the session
+- Clicks, `browser_find` clicks and drags move the pointer along a curved, eased path by default (agent-browser's `human` input mode), so hover-gated menus open on the way, pointer-path bot checks pass and recordings show the cursor travel. It costs about a second per click; `DA_BROWSER_INPUT_MODE=instant` (about 40ms) or `smooth` (a 200ms straight glide) trades that back
 - `PI_BROWSER_CONTROL_BANNER=0` turns off the controlled-tab edge glow and favicon, which are page content and otherwise appear in every recording and screenshot
 
 ## Operational notes

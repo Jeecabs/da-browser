@@ -228,15 +228,15 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
     description:
       "Find an element by role/text/label/placeholder/alt/title/testid (or first/last/nth CSS) and perform an action on it in one step. Always acts — use browser_snapshot to inspect without acting.",
     promptSnippet:
-      "Find an element by semantic locator (role, label, text, etc.) and click/fill/type/hover/focus/check/uncheck it in one call",
+      "Find an element by semantic locator (role, label, text, etc.) and click, fill, hover or check it in one call",
     parameters: {
       type: "object",
       properties: {
         locator: { type: "string", enum: ["role", "text", "label", "placeholder", "alt", "title", "testid", "first", "last", "nth"] },
         value: { type: "string", description: "Role/text/label/placeholder/alt/title/testid value, or CSS selector for first/last/nth" },
-        action: { type: "string", enum: ["click", "fill", "type", "hover", "focus", "check", "uncheck"] },
+        action: { type: "string", enum: ["click", "fill", "hover", "check"] },
         nthIndex: { type: "number", description: "0-based match index, required when locator is nth" },
-        text: { type: "string", description: "Action argument for fill/type" },
+        text: { type: "string", description: "Text to fill (action fill)" },
         name: { type: "string", description: "Accessible-name filter (role locator only)" },
         exact: { type: "boolean", description: "Require exact text/name match" },
         waitMode: WAIT_MODE,

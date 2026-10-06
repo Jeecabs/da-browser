@@ -131,8 +131,8 @@ export function describeActivity(
     case "find": {
       // A role locator names the element with `name`: `click button "Save changes"`.
       const target = params.locator === "role" && typeof params.name === "string" ? joined(word(params.value), quote(params.name)) : quote(params.value);
-      if (action === "fill" || action === "type") return { text: joined("type into", target), motion: "caret" };
-      if (action === "hover" || action === "focus" || action === "check" || action === "uncheck") {
+      if (action === "fill") return { text: joined("type into", target), motion: "caret" };
+      if (action === "hover" || action === "check") {
         return { text: joined(action, target), motion: "ripple" };
       }
       return { text: joined("click", target), motion: "ripple" };

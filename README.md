@@ -1,106 +1,103 @@
 # da browser
 
+Let [Claude Code](https://code.claude.com) and [pi](https://github.com/earendil-works/pi) drive your own signed-in Arc or Chromium. Each agent gets a tab of its own and leaves yours alone.
+
 <p align="center">
-  <img src="assets/da-browser.png" alt="Tabby cat reaching for a cursor in a browser window" width="400" />
+  <img src="assets/readme/demo.gif" alt="An agent clicks Wikipedia's search box along a curved pointer path, types Web browser, opens the article and scrolls. A coral glow edges the page it controls." width="800" />
 </p>
 
-Browser control for [pi](https://github.com/earendil-works/pi) and [Claude Code](https://code.claude.com), powered by [`agent-browser`](https://github.com/vercel-labs/agent-browser). Both drive your own signed-in Arc or Chromium, each session on its own strictly pinned tab.
+## One browser, many agents
 
-[Documentation](https://jeecabs.github.io/pi-tooling/da-browser/) · [All tools](https://jeecabs.github.io/pi-tooling/)
+<p align="center">
+  <img src="assets/readme/tabs.svg" alt="Your Arc with six tabs. pi and Claude Code each drive their own pinned tab, marked in coral with the agent's favicon; Gmail, Linear, Figma and Docs are left alone." width="800" />
+</p>
 
-## Prerequisites
+<table>
+  <tr>
+    <td width="50%" valign="top"><b>Already signed in</b><br>It drives your real browser, so dashboards, inboxes and admin panels just work. No logging in again, no copied cookies.</td>
+    <td width="50%" valign="top"><b>One tab each</b><br>Every session is pinned to its own tab, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>Easy to spot</b><br>The agent's tab gets a coral edge glow and its own favicon: a pointer for pi, a pointer with a sparkle for Claude Code.</td>
+    <td width="50%" valign="top"><b>Moves like a person</b><br>Clicks and drags travel a curved, eased path, so hover menus open on the way and pointer-path bot checks see real movement.</td>
+  </tr>
+</table>
 
-- `agent-browser` 0.38.1 or newer on `PATH`: `npm install -g agent-browser@latest`
-- Arc or Chromium with remote debugging: `open -na "Arc" --args --remote-debugging-port=9222`
-- `ffmpeg` on `PATH` only for `browser_record`, with the libvpx (WebM) and libx264 (MP4) encoders (`brew install ffmpeg` has both). `agent-browser doctor` checks them.
+## Install
 
-Each host checks the minimum CLI version on session start and before every action. `/browser status` shows the installed version.
-
-## Install in pi
-
-```bash
-pi install https://github.com/Jeecabs/da-browser
-```
-
-Reload pi if already running:
-
-```text
-/reload
-```
-
-## Install in Claude Code
-
-da-browser is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), which needs Claude Code 2.1.287 or newer.
+**Claude Code** (2.1.287 or newer)
 
 ```bash
 claude plugin marketplace add Jeecabs/da-browser
 claude plugin install da-browser@da-browser
 ```
 
-Run `/reload-plugins` in a session that is already open. The tools appear as `mcp__da-browser__browser_*`, and the `slack` and `derive-client` skills as `da-browser:slack` and `da-browser:derive-client`.
-
-Both hosts register the same 28 tools from one table, `src/browser-tools.ts`.
-
-## Quick start
+**pi**
 
 ```bash
+pi install https://github.com/Jeecabs/da-browser
+```
+
+**Both need** agent-browser 0.38.1 or newer, and Arc (or Chromium) started with remote debugging:
+
+```bash
+npm install -g agent-browser@latest
 open -na "Arc" --args --remote-debugging-port=9222
 ```
 
-Then, in either host:
+Then run `/browser connect` in your agent, or just ask it to use the browser.
 
-```text
-/browser connect
-/browser status
-```
+## Ask for things like
 
-Open a page and snapshot it:
+- "Open the Vercel dashboard and tell me why the last deploy failed."
+- "Sign up on localhost:3000 with a test email and record a video of it."
+- "What's unread in my Slack?"
+- "Run an accessibility audit on our pricing page."
+- "Why is this page slow? Check its web vitals."
+- "Record this site's API calls and build me a client for them."
 
-- `browser_open` navigates to a URL
-- `browser_snapshot` collects fresh `@eN` refs
-- `browser_find` locates by role/text/label and acts in one step
+## Recordings you can skim
 
-## Commands
+`browser_record` films the agent's tab with the cursor drawn in, and can save a contact sheet next to the video: one picture of the moments the page changed, with the changes boxed.
 
-| Command | Description |
-| --- | --- |
-| `/browser connect [port]` | Connect to Arc/Chromium through CDP |
-| `/browser status` | Probe connection, page targets, browser version, artifacts |
-| `/browser cleanup` | Disconnect/reset browser state for the session |
-
-In Claude Code, `/browser` runs at once, even while Claude is working, without starting a turn.
+<p align="center">
+  <img src="assets/readme/contact-sheet.png" alt="Contact sheet of the demo take: Wikipedia's main page, the search suggestions for Web browser, the article and its scroll, each changed region boxed in red." width="800" />
+</p>
 
 ## Tools
 
-28 typed tools cover open, snapshot, read, click, find, fill, navigation, tabs, eval, recording, traces, HAR and cookie export, React inspection, a11y, and vitals. Full table and flags: [docs/tools.md](docs/tools.md).
+28 tools, the same in both hosts. Full reference in [docs/tools.md](docs/tools.md).
 
-## How it shows up
+| To | Use |
+| --- | --- |
+| See the page | `browser_snapshot` `browser_read` `browser_get` `browser_is` `browser_checkpoint` |
+| Act on it | `browser_click` `browser_find` `browser_fill` `browser_select` `browser_press` `browser_scroll` |
+| Get around | `browser_open` `browser_nav` `browser_tab` `browser_wait` |
+| Capture | `browser_record` `browser_har` `browser_trace` `browser_cookies` |
+| Debug and audit | `browser_debug` `browser_eval` `browser_react` `browser_a11y` `browser_vitals` |
+| Set up | `browser_connect` `browser_status` `browser_set` `browser_command` |
 
-Both hosts answer the same three questions, each in one place:
-
-| Question | pi | Claude Code |
-| --- | --- | --- |
-| Where is the agent's browser? | Status chip | Status line |
-| What is it doing right now? | Trail row above the editor | Band above the prompt |
-| What did it do, and what changed? | Tool row: the call, then new facts | Tool row: the call, then new facts |
-
-The raw output (snapshots, page text) goes to the model, never to the transcript. The trail disappears when the browser is idle.
+`/browser connect [port]`, `/browser status` and `/browser cleanup` run without starting a turn.
 
 ## Skills
 
-| Skill | Description |
-| --- | --- |
-| `derive-client` | Record a site once, then generate a zero-dependency client/CLI that calls its internal API directly. Masked HAR analysis, safe cookie export, `smoke` drift check. |
-| `slack` | Slack web app on these tools: unreads, messages, threads, search, Activity, and a guarded send/reply that pins the destination and never touches drafts. |
+- **`slack`** reads your Slack web app (unreads, mentions, threads, search) and sends only after checking the destination.
+- **`derive-client`** records a site once, then writes a standalone client that calls its API directly, so repeat work skips the browser.
 
-## How it is built
+## Settings
 
-One browser core, two hosts:
+| Variable | Default | Change it to |
+| --- | --- | --- |
+| `PI_BROWSER_PORT` | `9222` | Another remote debugging port |
+| `DA_BROWSER_INPUT_MODE` | `human` | `instant` for 40ms clicks instead of about a second, or `smooth` for a straight 200ms glide |
+| `PI_BROWSER_CONTROL_BANNER` | on | `0` to hide the coral glow and favicon, for clean screenshots and demo videos |
 
-- **`src/agent-browser.ts` and its helpers** are the core. They import neither Node nor a host package. Everything they need from a host is the small `BrowserHost` in `src/host.ts`: run a command, write a file, cwd, home, and session id.
-- **`src/index.ts` with `src/pi-host.ts`** is the pi extension. It uses `pi.exec` and `node:fs`.
-- **`hooks/register.tsx`** is the Claude Code mod. It uses `$.process` and `$.fs`.
-- **`src/browser-present.ts`** turns calls into words and facts for both hosts. `src/browser-ui.ts` paints them for pi; the mod paints them for Claude Code.
+## Good to know
+
+- It's your browser, signed in as you. Agents act only when you ask, but whatever they do, they do as you.
+- HAR captures can hold cookies, auth headers and response bodies. Look before you share one.
+- In Claude Code, running `agent-browser --cdp` straight from Bash is refused, because it would skip the tab pin.
+- Screenshots, recordings and other captures land in your temp folder, under `da-browser/`.
 
 ## Development
 
@@ -111,14 +108,8 @@ pnpm test
 claude plugin validate .
 ```
 
-To work on the mod with hot reload, load this folder in Claude Code with `claude --plugin-dir .`. `pnpm test:e2e` launches an isolated browser to verify strict shared-CDP pinning. `pnpm preview:control` previews the control indicator on light and dark backgrounds. See [docs/tools.md](docs/tools.md) for install alternatives and operational detail.
+`pnpm test:e2e` launches a throwaway browser to check that sessions stay on their own tabs. How it's built, and the words it uses, are in [CONTEXT.md](CONTEXT.md).
 
-## Notes
-
-- Browser refs (`@eN`) survive same-document updates for elements that stay; a replaced element or a navigation invalidates them. Re-snapshot after navigation, or when an action on a ref fails.
-- `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
-- Controlled tabs get a stationary coral edge glow and a favicon that names the agent: a coral pointer under pi, a coral pointer with a sparkle under Claude Code. Claude's small PNG is embedded, so it needs no image download. Releasing control restores the original favicon.
-- Strict tab pinning keeps each session on its own tab, pi and Claude Code alike (`pi-…` and `cc-…` daemon sessions). A closed pinned tab fails safely with `tab_gone`; recover with `browser_tab` new/switch or `browser_connect`.
-- In Claude Code, raw `agent-browser --cdp` or `connect` through Bash is refused, because it would bypass the session's pinned tab.
-- HAR captures can contain cookies, auth headers, and response bodies. Inspect before sharing.
-- Artifacts live under `/tmp/da-browser/<cwd-slug>`.
+<p align="center">
+  <img src="assets/da-browser.png" alt="Tabby cat reaching for a cursor in a browser window" width="140" />
+</p>

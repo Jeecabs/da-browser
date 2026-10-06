@@ -39,7 +39,7 @@ claude plugin install da-browser@da-browser
 
 Run `/reload-plugins` in a session that is already open. The tools appear as `mcp__da-browser__browser_*`, and the `slack` and `derive-client` skills as `da-browser:slack` and `da-browser:derive-client`.
 
-The Claude Code mod covers the core loop so far: status, connect, open, snapshot, read, click, find, fill, press, tab, and checkpoint. The rest of the 28 pi tools follow.
+Both hosts register the same 28 tools from one table, `src/browser-tools.ts`.
 
 ## Quick start
 
@@ -115,7 +115,7 @@ To work on the mod with hot reload, load this folder in Claude Code with `claude
 
 ## Notes
 
-- Browser refs (`@eN`) go stale after DOM mutations. Re-snapshot before clicking or filling.
+- Browser refs (`@eN`) survive same-document updates for elements that stay; a replaced element or a navigation invalidates them. Re-snapshot after navigation, or when an action on a ref fails.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
 - Controlled tabs get a stationary coral edge glow and a favicon that names the agent: a coral pointer under pi, a coral pointer with a sparkle under Claude Code. Claude's small PNG is embedded, so it needs no image download. Releasing control restores the original favicon.
 - Strict tab pinning keeps each session on its own tab, pi and Claude Code alike (`pi-…` and `cc-…` daemon sessions). A closed pinned tab fails safely with `tab_gone`; recover with `browser_tab` new/switch or `browser_connect`.

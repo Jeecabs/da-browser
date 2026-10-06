@@ -748,9 +748,9 @@ export function artifactName(path: string): string {
  */
 export function explainFailure(text: string): { reason: string; hint?: string } {
   // A failed CLI call reads `Command failed: agent-browser …` then `stderr:`; the reason
-  // is the stderr line, not the command.
+  // is the stderr line, not the command. A --json failure leads with `agent-browser: <error>`.
   const stderr = text.match(/\nstderr:\n([\s\S]*)$/)?.[1];
-  const first = (stderr ? firstLine(stderr) : firstLine(text)).replace(/^✗\s*/, "");
+  const first = (stderr ? firstLine(stderr) : firstLine(text)).replace(/^(?:✗|agent-browser:)\s*/, "");
   if (/^Unknown ref\b/i.test(first)) return { reason: first, hint: "refs go stale when the page changes; take a new snapshot" };
   if (/^Arc is not reachable/.test(first)) return { reason: "Arc not reachable", hint: "relaunch Arc with remote debugging, then /browser connect" };
   if (/pinned browser tab is gone/.test(first)) return { reason: "tab closed", hint: "/browser connect opens a fresh one" };

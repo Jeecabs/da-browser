@@ -57,7 +57,8 @@ const TARGET_GONE_PATTERNS: RegExp[] = [
 
 // The page is reachable but didn't settle/respond in the allotted time.
 const PAGE_BUSY_PATTERNS: RegExp[] = [
-  /timeout/i,
+  // Every CDP argv carries `--idle-timeout`, so a message that echoes its command is not busy.
+  /(?<!idle-)timeout/i,
   /timed out/i,
   /exceeded/i,
   /navigation (failed|timeout)/i,

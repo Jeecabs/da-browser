@@ -722,6 +722,10 @@ test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(classifyCdpError("Protocol error: No target with given id found"), "target-gone");
   assert.equal(classifyCdpError("Execution context was destroyed"), "target-gone");
   assert.equal(classifyCdpError("Timeout 30000ms exceeded"), "page-busy");
+  assert.equal(
+    classifyCdpError("Recording already active\nCommand failed: agent-browser --pin-tab --idle-timeout 1h record start /tmp/x.webm"),
+    "unknown",
+  );
   // Action-level errors must NOT be classified as connection failures (no false retry).
   assert.equal(classifyCdpError("Element not found: @e5"), "unknown");
   assert.equal(classifyCdpError(""), "unknown");

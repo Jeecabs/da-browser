@@ -1,13 +1,19 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { controlledTabMarkScript, CONTROLLED_TAB_CLEAR_SCRIPT } from "../src/controlled-tab.ts";
+import { CLAUDE_FAVICON_HREF } from "../hooks/claude-favicon.ts";
 
 const root = new URL("../", import.meta.url);
 const control = `window.markControlledTab = () => {${controlledTabMarkScript("preview")}};
+window.markClaudeControlledTab = () => {${controlledTabMarkScript("preview", CLAUDE_FAVICON_HREF)}};
 window.clearControlledTab = () => {${CONTROLLED_TAB_CLEAR_SCRIPT}};`;
 const routes = new Map([
   ["/", ["preview/controlled-tab.html", "text/html; charset=utf-8"]],
   ["/favicon-source.png", ["assets/controlled-tab/favicon-source.png", "image/png"]],
+  ["/claude-favicon-source.png", ["assets/controlled-tab/claude-favicon-source.png", "image/png"]],
+  ...[16, 32, 64].map((size) => [
+    `/claude-favicon-${size}.png`, [`assets/controlled-tab/claude-favicon-${size}.png`, "image/png"],
+  ]),
   ...[16, 32, 64].map((size) => [
     `/favicon-${size}.png`, [`assets/controlled-tab/favicon-${size}.png`, "image/png"],
   ]),

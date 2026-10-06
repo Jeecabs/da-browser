@@ -56,7 +56,7 @@ export function controlledTabMarkScript(_labelText: string, faviconHrefOverride?
     icon.id = faviconId;
     icon.rel = "icon";
     icon.type = "image/png";
-    icon.sizes = "64x64";
+    ${faviconHrefOverride ? "" : 'icon.sizes = "64x64";'}
     icon.setAttribute(faviconAttr, "true");
     icon.href = faviconHref;
     (document.head || document.documentElement).appendChild(icon);

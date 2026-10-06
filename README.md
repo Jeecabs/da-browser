@@ -117,7 +117,7 @@ To work on the mod with hot reload, load this folder in Claude Code with `claude
 
 - Browser refs (`@eN`) go stale after DOM mutations. Re-snapshot before clicking or filling.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
-- Controlled tabs get a stationary coral edge glow and a favicon that names the agent: a coral pointer under pi, a coral spark under Claude Code. Releasing control restores the original favicon.
+- Controlled tabs get a stationary coral edge glow and a favicon that names the agent: a coral pointer under pi, a coral pointer with a sparkle under Claude Code. Claude's small PNG is embedded, so it needs no image download. Releasing control restores the original favicon.
 - Strict tab pinning keeps each session on its own tab, pi and Claude Code alike (`pi-…` and `cc-…` daemon sessions). A closed pinned tab fails safely with `tab_gone`; recover with `browser_tab` new/switch or `browser_connect`.
 - In Claude Code, raw `agent-browser --cdp` or `connect` through Bash is refused, because it would bypass the session's pinned tab.
 - HAR captures can contain cookies, auth headers, and response bodies. Inspect before sharing.

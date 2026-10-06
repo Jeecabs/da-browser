@@ -224,14 +224,15 @@ export function buildA11yArgs(params: A11yArgsOptions): string[] {
   return args;
 }
 
-export const FIND_ACTIONS = ["click", "fill", "type", "hover", "focus", "check", "uncheck"] as const;
+// What agent-browser 0.38 `find` performs; it rejects any other action word.
+export const FIND_ACTIONS = ["click", "fill", "hover", "check"] as const;
 export type FindAction = (typeof FIND_ACTIONS)[number];
 
-const FIND_ACTIONS_WITH_TEXT = new Set<FindAction>(["fill", "type"]);
+const FIND_ACTIONS_WITH_TEXT = new Set<FindAction>(["fill"]);
 // Actions that change page state and therefore invalidate snapshot refs.
-export const MUTATING_FIND_ACTIONS = new Set<FindAction>(["click", "fill", "type", "check", "uncheck"]);
+export const MUTATING_FIND_ACTIONS = new Set<FindAction>(["click", "fill", "check"]);
 // Actions agent-browser drives through the pointer, so `--human` movement applies.
-const POINTER_FIND_ACTIONS = new Set<FindAction>(["click", "hover", "check", "uncheck"]);
+const POINTER_FIND_ACTIONS = new Set<FindAction>(["click", "hover", "check"]);
 
 export interface FindArgsOptions {
   locator: string;

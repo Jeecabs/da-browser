@@ -86,6 +86,8 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
   assert.ok((args[3]?.length ?? Infinity) <= 19, "session name must leave room for the macOS socket path");
   assert.deepEqual(args.slice(4), [
     "--pin-tab",
+    "--idle-timeout",
+    "1h",
     "--allowed-domains",
     "",
     "--cdp",

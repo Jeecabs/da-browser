@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { pressBrowserKey } from "../src/agent-browser.ts";
+import type { BrowserHost } from "../src/host.ts";
 import { connectionHealth, createBrowserState } from "../src/state.ts";
 import {
     a11yText,
@@ -381,5 +383,19 @@ describe("fixes from a real-browser run", () => {
     it("explains CLI failures by their stderr, not the command line", () => {
         const text = "Command failed: agent-browser --namespace da-browser --session pi-1 --pin-tab --cdp 9222 click @e99\nExit code: 1\nstderr:\n✗ Unknown ref: e99";
         assert.deepEqual(explainFailure(text), { reason: "Unknown ref: e99", hint: "refs go stale when the page changes; take a new snapshot" });
+    });
+
+    it("explains --json CLI failures by the error on stdout, keeping the details", async () => {
+        const envelope = '{"success":false,"data":null,"error":"No recording in progress"}';
+        const host = {
+            exec: async (_command: string, args: string[]) =>
+                args[0] === "--version" ? { stdout: "agent-browser 0.38.1", stderr: "", code: 0 } : { stdout: envelope, stderr: "", code: 1 },
+            ensureDir: async () => {},
+            sessionId: "s",
+            sessionPrefix: "pi",
+        } as unknown as BrowserHost;
+        const error = await pressBrowserKey(host, base(), "Enter", "none").then(() => undefined, (failure: Error) => failure);
+        assert.match(error!.message, /^agent-browser: No recording in progress\nCommand failed: agent-browser .*press Enter\n[\s\S]*stdout:\n\{"success":false/);
+        assert.deepEqual(explainFailure(error!.message), { reason: "No recording in progress" });
     });
 });

@@ -1830,7 +1830,16 @@ function normalizeBrowserCommandArgs(args: string[]): string[] {
 }
 
 function formatExecFailure(command: string, args: string[], result: CommandResult): string {
+  // With --json, agent-browser reports the reason on stdout as {"success":false,"error":…}
+  // and leaves stderr empty, so lead with it rather than the long command line.
+  let reason: string | undefined;
+  try {
+    unwrapCliEnvelope(JSON.parse(result.stdout.slice(Math.max(0, findJsonStart(result.stdout)))));
+  } catch (error) {
+    if (error instanceof AgentBrowserCliError) reason = error.message;
+  }
   const details = [
+    ...(reason ? [`agent-browser: ${reason}`] : []),
     `Command failed: ${command} ${args.join(" ")}`,
     `Exit code: ${result.code}`,
   ];

@@ -12,12 +12,16 @@ Let [Claude Code](https://code.claude.com) and [pi](https://github.com/earendil-
   <img src="assets/readme/tabs.svg" alt="Your Arc with six tabs. pi and Claude Code each drive their own pinned tab, marked in coral with the agent's favicon; Gmail, Linear, Figma and Docs are left alone." width="800" />
 </p>
 
-| | |
-| --- | --- |
-| **Already signed in** | It drives your real browser, so dashboards, inboxes and admin panels just work. No logging in again, no copied cookies. |
-| **One tab each** | Every session is pinned to its own tab, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another. |
-| **Easy to spot** | The agent's tab gets a coral edge glow and its own favicon: a pointer for pi, a pointer with a sparkle for Claude Code. |
-| **Moves like a person** | Clicks and drags travel a curved, eased path, so hover menus open on the way and pointer-path bot checks see real movement. |
+<table>
+  <tr>
+    <td width="50%" valign="top"><b>Already signed in</b><br>It drives your real browser, so dashboards, inboxes and admin panels just work. No logging in again, no copied cookies.</td>
+    <td width="50%" valign="top"><b>One tab each</b><br>Every session is pinned to its own tab, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>Easy to spot</b><br>The agent's tab gets a coral edge glow and its own favicon: a pointer for pi, a pointer with a sparkle for Claude Code.</td>
+    <td width="50%" valign="top"><b>Moves like a person</b><br>Clicks and drags travel a curved, eased path, so hover menus open on the way and pointer-path bot checks see real movement.</td>
+  </tr>
+</table>
 
 ## Install
 
@@ -77,10 +81,8 @@ Then run `/browser connect` in your agent, or just ask it to use the browser.
 
 ## Skills
 
-| Skill | What it does |
-| --- | --- |
-| `slack` | Reads your Slack web app (unreads, mentions, threads, search) and sends only after checking the destination |
-| `derive-client` | Records a site once, then writes a standalone client that calls its API directly, so repeat work skips the browser |
+- **`slack`** reads your Slack web app (unreads, mentions, threads, search) and sends only after checking the destination.
+- **`derive-client`** records a site once, then writes a standalone client that calls its API directly, so repeat work skips the browser.
 
 ## Settings
 

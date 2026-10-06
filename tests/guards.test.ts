@@ -89,6 +89,8 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
     "--pin-tab",
     "--idle-timeout",
     "1h",
+    "--input-mode",
+    "human",
     "--allowed-domains",
     "",
     "--cdp",
@@ -873,10 +875,10 @@ test("buildFindArgs allows human pointer paths only for pointer actions", () => 
 });
 
 
-test("resolveInputMode treats instant as the implicit default and rejects nonsense", () => {
-  assert.equal(resolveInputMode({}), undefined);
-  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "  " }), undefined);
-  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "instant" }), undefined);
+test("resolveInputMode defaults to human, takes an explicit mode and rejects nonsense", () => {
+  assert.equal(resolveInputMode({}), "human");
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "  " }), "human");
+  assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "instant" }), "instant");
   assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "Human" }), "human");
   assert.equal(resolveInputMode({ DA_BROWSER_INPUT_MODE: "smooth" }), "smooth");
   assert.throws(() => resolveInputMode({ DA_BROWSER_INPUT_MODE: "teleport" }), /must be one of/);

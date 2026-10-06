@@ -4,6 +4,24 @@ Warm coral tile with an ivory pointer, generated with the built-in ImageGen tool
 `favicon-source.png` preserves the original transparent output. The 16, 32 and 64 px
 PNGs are resized exports; the tab override embeds the 64 px version as a data URL.
 
+Claude Code uses `claude-favicon-source.png`: a coral rounded tile with an ivory
+pointer and one four-point sparkle, generated with the built-in ImageGen tool.
+The transparent source is preserved, with optimised 16, 32 and 64 px PNG exports.
+`hooks/claude-favicon.ts` embeds the 32 px PNG (under 4 KB), without runtime image
+processing, filesystem access or network requests. The former `claude-spark.svg`
+is retained as an unused historical asset.
+
+Run `node scripts/build-favicon.mjs` after changing either packaged favicon to
+regenerate both embedded constants. Run `pnpm preview:control` to compare pi and
+Claude on light and dark backgrounds and exercise control/release.
+
+## Claude generation prompt
+
+Single browser favicon: warm coral rounded square tile, one bold ivory mouse
+pointer pointing upper left and exactly one separated four-point ivory sparkle
+at upper right. Flat front view, simple silhouettes readable at 16 px, transparent
+corners, no text, sunburst, extra stars, mockup or shadow outside the tile.
+
 ## Generation prompt
 
 Use case: logo-brand

@@ -59,6 +59,7 @@
   <header>
     <div class="brand">da browser<span>Control indicator</span></div>
     <div class="controls">
+      <button id="agent" type="button" aria-pressed="false">Switch to Claude</button>
       <button id="theme" type="button">Dark background</button>
       <button id="control" type="button" aria-pressed="true">Release control</button>
     </div>
@@ -83,6 +84,7 @@
       </div>
     </div>
     <div class="details">
+      <div class="detail"><b>Recognise the agent</b><p>pi uses a plain pointer. Claude uses a pointer with a sparkle.</p><img src="/favicon-32.png" width="32" height="32" alt="pi pointer"> <img src="/claude-favicon-32.png" width="32" height="32" alt="Claude pointer with sparkle"></div>
       <div class="detail"><b>Soft at the edges</b><p>Coral fades gently into the page, with a warmer highlight along the top.</p></div>
       <div class="detail"><b>Still and unobtrusive</b><p>No looping motion. Clicks, scrolling and the page layout work as usual.</p></div>
       <div class="detail"><b>Clear when released</b><p>The glow disappears and the site's original favicon returns.</p></div>
@@ -91,7 +93,19 @@
   </main>
   <script src="/control.js"></script>
   <script>
+    let claude = false;
+    const mark = () => claude ? window.markClaudeControlledTab() : window.markControlledTab();
     window.markControlledTab();
+    document.getElementById('agent').addEventListener('click', (event) => {
+      claude = !claude;
+      event.currentTarget.textContent = claude ? 'Switch to pi' : 'Switch to Claude';
+      event.currentTarget.setAttribute('aria-pressed', String(claude));
+      document.querySelector('.large-icon').src = claude ? '/claude-favicon-source.png' : '/favicon-source.png';
+      document.querySelector('.large-icon').alt = claude ? 'Coral favicon with an ivory pointer and sparkle' : 'Coral favicon with an ivory pointer';
+      document.querySelectorAll('.tab img').forEach((icon) => { icon.src = claude ? '/claude-favicon-32.png' : '/favicon-32.png'; });
+      window.clearControlledTab();
+      if (document.body.dataset.controlled === 'true') mark();
+    });
     document.getElementById('theme').addEventListener('click', (event) => {
       const dark = document.documentElement.dataset.theme !== 'dark';
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -103,7 +117,7 @@
       event.currentTarget.setAttribute('aria-pressed', String(active));
       event.currentTarget.textContent = active ? 'Release control' : 'Take control';
       document.getElementById('status').textContent = active ? 'Agent in control' : 'Control released';
-      if (active) window.markControlledTab(); else window.clearControlledTab();
+      if (active) mark(); else window.clearControlledTab();
     });
   </script>
 </body>

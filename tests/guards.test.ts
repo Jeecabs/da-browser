@@ -6,6 +6,7 @@ import {
   supportsAgentBrowserVersion,
 } from "../src/agent-browser-version.ts";
 import {
+  attachesAgentBrowserOverCdp,
   buildA11yArgs,
   buildCdpInvocationArgs,
   buildFindArgs,
@@ -86,6 +87,8 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
   assert.ok((args[3]?.length ?? Infinity) <= 19, "session name must leave room for the macOS socket path");
   assert.deepEqual(args.slice(4), [
     "--pin-tab",
+    "--idle-timeout",
+    "1h",
     "--allowed-domains",
     "",
     "--cdp",
@@ -112,6 +115,28 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
     () => buildCdpInvocationArgs(["--no-pin-tab", "get", "url"], 9222, "test"),
     /da-browser manages --no-pin-tab/,
   );
+});
+
+test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => {
+  for (const command of [
+    "agent-browser --cdp 9222 snapshot",
+    "npx -y agent-browser connect 9222",
+    "AGENT_BROWSER_DEBUG=1 agent-browser --auto-connect open example.com",
+    "cd /tmp && agent-browser --cdp 9222 get url",
+    "echo $(agent-browser --cdp 9222 get title)",
+    "ls\nagent-browser --session x --cdp 9222 tab list",
+  ]) {
+    assert.equal(attachesAgentBrowserOverCdp(command), true, command);
+  }
+  for (const command of [
+    "agent-browser --version",
+    "agent-browser --namespace da-browser session list",
+    "agent-browser open example.com",
+    'git commit -m "refuse agent-browser --cdp from Bash"',
+    "gh pr create --body 'agent-browser connect is refused'",
+  ]) {
+    assert.equal(attachesAgentBrowserOverCdp(command), false, command);
+  }
 });
 
 

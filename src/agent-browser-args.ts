@@ -3,6 +3,12 @@ import { sha256Hex } from "./sha256.ts";
 
 const DA_BROWSER_NAMESPACE = "da-browser";
 
+// agent-browser exempts user-attached browsers from its 1h idle default, so without this
+// every ended session left its daemon running. An explicit value applies to CDP sessions,
+// and the strict pin rebinds the same tab when the next command respawns the daemon.
+// ponytail: fixed 1h; an active recording/HAR/trace idle that long is lost with the daemon.
+const DA_BROWSER_IDLE_TIMEOUT = "1h";
+
 export const INPUT_MODES = ["instant", "smooth", "human"] as const;
 export type InputMode = (typeof INPUT_MODES)[number];
 
@@ -52,7 +58,7 @@ export function buildCdpInvocationArgs(
     );
   }
   const managedFlag = commandArgs.find((arg) =>
-    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab", "--input-mode"].some(
+    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab", "--input-mode", "--idle-timeout"].some(
       (flag) => arg === flag || arg.startsWith(`${flag}=`),
     ),
   );
@@ -68,6 +74,8 @@ export function buildCdpInvocationArgs(
     "--session",
     agentBrowserSessionName(hostSessionId, sessionPrefix),
     "--pin-tab",
+    "--idle-timeout",
+    DA_BROWSER_IDLE_TIMEOUT,
     ...(inputMode ? ["--input-mode", inputMode] : []),
     "--allowed-domains",
     "",
@@ -75,6 +83,19 @@ export function buildCdpInvocationArgs(
     String(port),
     ...commandArgs,
   ];
+}
+
+/**
+ * Whether a shell command runs agent-browser attached over CDP (`--cdp`, `--auto-connect`,
+ * `connect`), which skips the per-session pin and can take over another session's tab.
+ * Matched only where agent-browser runs as a command (line start, or after ; & | ( ), so a
+ * commit message or PR body that merely mentions it passes, as do version checks.
+ * ponytail: spelling match, best effort; a script file or `xargs` that runs it gets past.
+ */
+export function attachesAgentBrowserOverCdp(command: string): boolean {
+  return /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(
+    command,
+  );
 }
 
 export interface SnapshotArgsOptions {

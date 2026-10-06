@@ -18,6 +18,7 @@ import {
   buildReadArgs,
   buildRecordArgs,
   buildScreenshotArgs,
+  buildSessionListArgs,
   buildSetArgs,
   buildSnapshotArgs,
   buildTabArgs,
@@ -1056,7 +1057,11 @@ export async function tabBrowser(
           ? params.tab !== undefined ? `Closed tab ${params.tab}.` : "Closed current tab."
           : `Closed ${params.tab !== undefined ? `tab ${params.tab}` : "the current tab"}; the session remains pinned and awaits explicit recovery.`
         : `Switched and re-pinned to tab ${params.tab}.`;
-  result.summary = verb;
+  // The recorder stays attached to the tab it started on, which is now hidden and freezes.
+  const recordingLeftBehind = state.recording && (params.action === "new" || params.action === "switch");
+  result.summary = recordingLeftBehind
+    ? `${verb}\nWarning: the recording is still filming the previous tab, which is now in the background and will freeze. Use browser_record restart to film this tab.`
+    : verb;
   (result.diagnostics as Record<string, unknown>).commandResult = commandResult;
   (result.diagnostics as Record<string, unknown>).tabs = tabs;
   (result.diagnostics as Record<string, unknown>).targetId = state.targetId;
@@ -1211,54 +1216,149 @@ export async function recordBrowser(
 
   if (params.action === "stop") {
     const previous = state.recording;
-    const stopped = await runAgentBrowserJSON(host, buildRecordArgs({ action: "stop" }), 60_000, {
-      port: state.port,
-    });
+    // agent-browser drops its recording on every stop, failed or not, so ours goes too;
+    // otherwise a failed stop leaves "rec" showing with nothing left to stop.
     state.recording = undefined;
-    state.connected = true;
     state.lastAction = "record stop";
+    // A tab hidden mid-take froze from then on, though it painted a few frames first.
+    const hiddenAtStop = previous ? await controlledTabHidden(host, state) : false;
+    let stopped: unknown;
+    try {
+      stopped = await runAgentBrowserJSON(host, buildRecordArgs({ action: "stop" }), 60_000, { port: state.port });
+    } catch (error) {
+      if (!/No recording in progress/.test(error instanceof Error ? error.message : String(error))) throw error;
+      return {
+        summary: `No recording was running: the browser daemon restarted (idle timeout, crash, or a session change) or the take was already stopped.${previous ? ` ${previous.file} may be missing or truncated.` : ""}`,
+        diagnostics: { action: "stop", lost: true, file: previous?.file },
+      };
+    }
+    state.connected = true;
     state.lastError = undefined;
 
+    const data = isPlainObject(stopped) ? stopped : {};
     const file = readString(stopped, "path") ?? previous?.file;
     const sheet = readString(stopped, "contactSheetPath");
-    const frames = isPlainObject(stopped) ? stopped.frames : undefined;
+    // Chrome does not paint a hidden tab, so its screencast holds one frame for the take.
+    const fps = typeof data.fps === "number" ? data.fps : 30;
+    const stillFrame = typeof data.capturedFrames === "number" && data.capturedFrames <= 1 && typeof data.frames === "number" && data.frames > fps;
     return {
-      summary: file ? `Stopped recording → ${file}` : "Stopped recording.",
+      summary: [
+        file ? `Stopped recording → ${file}` : "Stopped recording.",
+        stillFrame
+          ? "Warning: the video is one still frame. The tab never repainted, most likely because it was in the background or its window was minimised."
+          : hiddenAtStop
+            ? "Warning: the tab was in the background when the take ended, so the video froze from when it was hidden."
+            : "",
+      ].filter(Boolean).join("\n"),
       artifacts: [file, sheet].filter((entry): entry is string => Boolean(entry)),
       diagnostics: {
         action: "stop",
         file,
         contactSheetPath: sheet,
-        frames,
-        capturedFrames: isPlainObject(stopped) ? stopped.capturedFrames : undefined,
+        frames: data.frames,
+        capturedFrames: data.capturedFrames,
+        fps: data.fps,
+        contactSheetFrames: data.contactSheetFrames,
+        stillFrame,
+        hiddenAtStop,
         durationMs: previous ? Date.now() - previous.startedAt : undefined,
       },
     };
   }
 
   // .mp4 (H.264) plays inline in more viewers; .webm (VP8) stays the smaller default.
+  if (params.format !== undefined && params.format !== "webm" && params.format !== "mp4") {
+    throw new Error(`browser_record format must be webm or mp4 (got ${params.format}).`);
+  }
   const file = artifactPath(state, params.label ?? "recording", params.format ?? "webm");
   const args = buildRecordArgs({ ...params, file });
-  await runAgentBrowser(host, args, 30_000, { port: state.port });
+  const visibility = await bringControlledTabForward(host, state);
+  const previous = state.recording;
+  const started = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
   await markControlledTab(host, state);
-  state.recording = { file, startedAt: Date.now() };
+  const contactSheet = Boolean(params.contactSheet || params.contactSheetThreshold !== undefined);
+  state.recording = { file, startedAt: Date.now(), ...(contactSheet ? { contactSheet } : {}) };
   state.connected = true;
-  state.lastAction = args.join(" ");
+  state.lastAction = `record ${params.action}`;
   state.lastError = undefined;
   await refreshCurrentUrl(host, state);
 
-  const sheet = params.contactSheet || params.contactSheetThreshold !== undefined ? contactSheetPath(file) : undefined;
+  // restart finalises the take before it, which only the restart's own answer names.
+  const previousPath = params.action === "restart" ? readString(started, "previousPath") : undefined;
+  const previousContactSheetPath = previousPath && previous?.contactSheet ? contactSheetPath(previousPath) : undefined;
   return {
-    summary: `${params.action === "restart" ? "Restarted" : "Started"} recording (${params.fps ?? 30} fps${params.cursor ? ", cursor" : ""}) → ${file}`,
+    summary: [
+      previousPath ? `Saved the previous take → ${previousPath}` : "",
+      `${params.action === "restart" ? "Restarted" : "Started"} recording (${params.fps ?? 30} fps${params.cursor ? ", cursor" : ""}) → ${file}`,
+      visibility === "brought" ? "Brought the controlled tab to the front: Chrome does not paint background tabs, so the video would have frozen." : "",
+      visibility === "hidden" ? "Warning: the controlled tab is still hidden (its window may be minimised or covered), so the video freezes until it is visible." : "",
+    ].filter(Boolean).join("\n"),
+    artifacts: [previousPath, previousContactSheetPath].filter((entry): entry is string => Boolean(entry)),
     diagnostics: {
       action: params.action,
       file,
       fps: params.fps ?? 30,
       cursor: params.cursor,
-      contactSheetPath: sheet,
+      contactSheetPath: contactSheet ? contactSheetPath(file) : undefined,
+      previousPath,
+      previousContactSheetPath,
+      broughtForward: visibility === "brought",
       currentUrl: state.currentUrl,
     },
   };
+}
+
+/**
+ * Chrome does not paint a background tab, so a screencast of one holds a single frame for
+ * the whole take. A recording is user-directed, so the controlled tab comes to the front.
+ * `/json/activate` is the browser's own endpoint, so the session's tab pin is untouched.
+ */
+async function bringControlledTabForward(host: BrowserHost, state: BrowserState): Promise<"visible" | "brought" | "hidden"> {
+  if (!(await controlledTabHidden(host, state))) return "visible";
+  if (!state.targetId) await refreshActiveTarget(host, state);
+  if (state.targetId) {
+    await host.exec("curl", ["-sf", `http://localhost:${state.port}/json/activate/${state.targetId}`], { timeout: 5_000 });
+  }
+  return (await controlledTabHidden(host, state)) ? "hidden" : "brought";
+}
+
+/** Whether the controlled tab is in the background, where Chrome does not paint it. */
+async function controlledTabHidden(host: BrowserHost, state: BrowserState): Promise<boolean> {
+  const visibility = await runAgentBrowser(host, ["eval", "document.visibilityState"], 10_000, { port: state.port, allowFailure: true });
+  return visibility.includes("hidden");
+}
+
+/** Whether this host's daemon is alive, asked without spawning one; undefined if unknown. */
+async function daemonRunning(host: BrowserHost): Promise<boolean | undefined> {
+  const listed = await host.exec("agent-browser", buildSessionListArgs(), { timeout: 5_000 }).catch(() => undefined);
+  try {
+    const data = listed?.code === 0 ? unwrapCliEnvelope(JSON.parse(listed.stdout)) : undefined;
+    const sessions = isPlainObject(data) ? data.sessions : undefined;
+    return Array.isArray(sessions) ? sessions.includes(agentBrowserSessionName(host.sessionId, host.sessionPrefix)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Stops a running recording, HAR or trace before its session goes, since a daemon that
+ * exits mid-capture leaves a truncated or empty file. It skips the readiness probes to fit a
+ * host's session-end budget: once a stop reaches the daemon, the file is finalised even if
+ * this client is then cut off. Best effort, as an ending session has no one to report to.
+ */
+export async function stopCapturesNow(host: BrowserHost, state: BrowserState): Promise<void> {
+  const stops = [
+    state.recording ? buildRecordArgs({ action: "stop" }) : undefined,
+    state.har ? buildHarArgs({ action: "stop", file: state.har.file }) : undefined,
+    state.tracing ? buildTraceArgs({ action: "stop" }) : undefined,
+  ].filter((args): args is string[] => Boolean(args));
+  state.recording = undefined;
+  state.har = undefined;
+  state.tracing = undefined;
+  // A stop is a CDP call, which would respawn a daemon that already exited and took the
+  // captures with it, only to hear there is nothing to stop.
+  if (stops.length === 0 || (await daemonRunning(host)) === false) return;
+  await Promise.all(stops.map((args) => runAgentBrowser(host, args, 10_000, { port: state.port, allowFailure: true }).catch(() => "")));
 }
 
 function readString(payload: unknown, key: string): string | undefined {
@@ -1547,6 +1647,10 @@ export async function verifyConnection(
   const attached = pages.find((t) => Boolean(t.url) && t.url !== "about:blank") ?? pages[0];
   const browser = await fetchBrowserVersion(host, state.port);
 
+  // A daemon that exited (idle timeout, crash) took any capture with it, and the binding
+  // probe below would respawn it without one. Ask first, through a call that spawns nothing.
+  const lostCaptures = await findLostCaptures(host, state);
+
   // Only touch agent-browser when state proves this Pi session has previously established a
   // binding. This actively restores/checks known bindings without making browser_status on a
   // brand-new session create a tab as a side effect.
@@ -1556,6 +1660,7 @@ export async function verifyConnection(
 
   state.connected = bindingError === undefined;
   if (bindingError === undefined) state.lastVerifiedAt = Date.now();
+  if (lostCaptures) state.lastError = `The browser daemon exited, so the ${lostCaptures} in progress was lost.`;
 
   return {
     portListening: true,
@@ -1572,6 +1677,18 @@ export async function verifyConnection(
     agentBrowserCompatible: agentBrowser.compatible,
     requiredAgentBrowserVersion: agentBrowser.required,
   };
+}
+
+/** Clears captures whose daemon is gone and names them, e.g. "recording, HAR"; else undefined. */
+async function findLostCaptures(host: BrowserHost, state: BrowserState): Promise<string | undefined> {
+  if (!state.recording && !state.har && !state.tracing) return undefined;
+  // Unknown is not gone: only a listing without this session clears state.
+  if ((await daemonRunning(host)) !== false) return undefined;
+  const lost = [state.recording && "recording", state.har && "HAR", state.tracing && "trace"].filter(Boolean).join(", ");
+  state.recording = undefined;
+  state.har = undefined;
+  state.tracing = undefined;
+  return lost;
 }
 
 async function probeKnownTabBinding(
@@ -1830,7 +1947,16 @@ function normalizeBrowserCommandArgs(args: string[]): string[] {
 }
 
 function formatExecFailure(command: string, args: string[], result: CommandResult): string {
+  // With --json, agent-browser reports the reason on stdout as {"success":false,"error":…}
+  // and leaves stderr empty, so lead with it rather than the long command line.
+  let reason: string | undefined;
+  try {
+    unwrapCliEnvelope(JSON.parse(result.stdout.slice(Math.max(0, findJsonStart(result.stdout)))));
+  } catch (error) {
+    if (error instanceof AgentBrowserCliError) reason = error.message;
+  }
   const details = [
+    ...(reason ? [`agent-browser: ${reason}`] : []),
     `Command failed: ${command} ${args.join(" ")}`,
     `Exit code: ${result.code}`,
   ];

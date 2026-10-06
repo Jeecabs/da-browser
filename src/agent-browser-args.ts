@@ -85,6 +85,11 @@ export function buildCdpInvocationArgs(
   ];
 }
 
+/** Lists the namespace's live daemons without spawning one, unlike any CDP call. */
+export function buildSessionListArgs(): string[] {
+  return ["--namespace", DA_BROWSER_NAMESPACE, "session", "list", "--json"];
+}
+
 /**
  * Whether a shell command runs agent-browser attached over CDP (`--cdp`, `--auto-connect`,
  * `connect`), which skips the per-session pin and can take over another session's tab.
@@ -561,6 +566,8 @@ export interface RecordArgsOptions {
   contactSheet?: boolean;
   /** Pixel-change ratio that selects a contact-sheet frame (0-1); implies contactSheet. */
   contactSheetThreshold?: number;
+  /** Navigate the controlled tab here and start once it loads, to film a cold load. */
+  url?: string;
 }
 
 /** agent-browser writes the contact sheet beside the video, replacing its extension. */
@@ -583,6 +590,7 @@ export function buildRecordArgs(params: RecordArgsOptions): string[] {
   }
 
   const args = ["record", params.action, params.file];
+  if (params.url) args.push(params.url);
   if (params.fps !== undefined) args.push("--fps", String(params.fps));
   if (params.cursor) args.push("--cursor");
   if (threshold !== undefined) args.push("--contact-sheet-threshold", String(threshold));

@@ -1,7 +1,7 @@
 import { CONTROLLED_TAB_FAVICON_PNG_BASE64 } from "./controlled-tab-favicon.ts";
 
 // Builders for the controlled-tab marker, injected via `agent-browser eval`.
-// A stationary coral glow fades inward from the viewport edges. The transparent
+// A stationary host-coloured glow fades inward from the viewport edges. The transparent
 // center and pointer-events:none keep page content and interactions unobstructed.
 // Embed the packaged PNG so controlled pages never need to fetch a local asset.
 
@@ -30,7 +30,16 @@ const RESTORE_LEGACY_FAVICON_SCRIPT = `
 
 // Builds the inject script. `labelText` is intentionally unused now; the visible page marker
 // is only the edge glow. Keep the parameter for call-site compatibility.
-export function controlledTabMarkScript(_labelText: string, faviconHrefOverride?: string): string {
+export type ControlledTabAccent = "blue" | "coral";
+
+export function controlledTabMarkScript(
+  _labelText: string,
+  faviconHrefOverride?: string,
+  accent: ControlledTabAccent = "blue",
+): string {
+  const glow = accent === "coral"
+    ? { core: "239,92,80", tint: "249,112,102", highlight: "255,182,153" }
+    : { core: "66,143,232", tint: "100,174,247", highlight: "130,201,255" };
   return `(() => {
   const badgeId = ${JSON.stringify(CONTROLLED_TAB_BADGE_ID)};
   const styleId = ${JSON.stringify(CONTROLLED_TAB_STYLE_ID)};
@@ -54,13 +63,14 @@ export function controlledTabMarkScript(_labelText: string, faviconHrefOverride?
   if (!icon) {
     icon = document.createElement("link");
     icon.id = faviconId;
-    icon.rel = "icon";
-    icon.type = "image/png";
-    ${faviconHrefOverride ? "" : 'icon.sizes = "64x64";'}
-    icon.setAttribute(faviconAttr, "true");
-    icon.href = faviconHref;
     (document.head || document.documentElement).appendChild(icon);
   }
+  icon.rel = "icon";
+  icon.type = "image/png";
+  ${faviconHrefOverride ? 'icon.removeAttribute("sizes");' : 'icon.sizes = "32x32";'}
+  icon.setAttribute(faviconAttr, "true");
+  // Refresh markers left by an older package version without reloading the page.
+  if (icon.getAttribute("href") !== faviconHref) icon.href = faviconHref;
 
   const sel = "#" + badgeId;
   let style = document.getElementById(styleId);
@@ -72,12 +82,12 @@ export function controlledTabMarkScript(_labelText: string, faviconHrefOverride?
   const css = sel + "{all:initial!important;position:fixed!important;inset:0!important;" +
     "display:block!important;z-index:2147483647!important;pointer-events:none!important;" +
     "background:" +
-      "radial-gradient(ellipse at 25% 0,rgba(255,182,153,.32),transparent 70%) top left/65% 28px no-repeat," +
-      "radial-gradient(ellipse at 85% 0,rgba(249,112,102,.22),transparent 70%) top right/60% 24px no-repeat," +
-      "linear-gradient(to bottom,rgba(239,92,80,.64),rgba(249,112,102,.2) 4px,transparent 22px) top/100% 22px no-repeat," +
-      "linear-gradient(to right,rgba(239,92,80,.38),rgba(249,112,102,.1) 3px,transparent 12px) left/12px 100% no-repeat," +
-      "linear-gradient(to left,rgba(239,92,80,.38),rgba(249,112,102,.1) 3px,transparent 12px) right/12px 100% no-repeat," +
-      "linear-gradient(to top,rgba(239,92,80,.28),transparent 10px) bottom/100% 10px no-repeat!important;}" +
+      "radial-gradient(ellipse at 25% 0,rgba(${glow.highlight},.32),transparent 70%) top left/65% 28px no-repeat," +
+      "radial-gradient(ellipse at 85% 0,rgba(${glow.tint},.22),transparent 70%) top right/60% 24px no-repeat," +
+      "linear-gradient(to bottom,rgba(${glow.core},.64),rgba(${glow.tint},.2) 4px,transparent 22px) top/100% 22px no-repeat," +
+      "linear-gradient(to right,rgba(${glow.core},.38),rgba(${glow.tint},.1) 3px,transparent 12px) left/12px 100% no-repeat," +
+      "linear-gradient(to left,rgba(${glow.core},.38),rgba(${glow.tint},.1) 3px,transparent 12px) right/12px 100% no-repeat," +
+      "linear-gradient(to top,rgba(${glow.core},.28),transparent 10px) bottom/100% 10px no-repeat!important;}" +
     "@media print{" + sel + "{display:none!important}}" +
     "@media (forced-colors:active){" + sel + "{background:none!important;outline:2px solid Highlight!important;outline-offset:-2px!important}}";
   if (style.textContent !== css) style.textContent = css;

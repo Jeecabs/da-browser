@@ -1,24 +1,24 @@
 # da browser
 
-Let [Claude Code](https://code.claude.com) and [pi](https://github.com/earendil-works/pi) drive your own signed-in Arc or Chromium. Each agent gets a tab of its own and leaves yours alone.
+Let [Claude Code](https://code.claude.com) and [pi](https://github.com/earendil-works/pi) work in your own signed-in Arc or Chromium. Run several sessions in parallel, each with its own tab, while you keep using yours.
 
 <p align="center">
   <img src="assets/readme/demo.gif" alt="An agent clicks Wikipedia's search box along a curved pointer path, types Web browser, opens the article and scrolls. A coral glow edges the page it controls." width="800" />
 </p>
 
-## One browser, many agents
+## One browser, a whole team
 
 <p align="center">
-  <img src="assets/readme/tabs.svg" alt="Your Arc with eight tabs. One pi session and three Claude Code sessions each drive a separate pinned tab, marked in coral with the agent's favicon. Claude Code session 1 checks a local app preview; your Gmail, Linear, Figma and Docs tabs are left alone." width="800" />
+  <img src="assets/readme/tabs.svg" alt="One browser, a whole team. pi tests sign-up in its own tab, with a blue pointer favicon and blue page glow. Three Claude Code sessions use separate tabs to review the UI, check accessibility and research an API, marked with coral pointer-and-sparkle favicons. Your Gmail, Figma, Linear and Docs tabs stay yours." width="800" />
 </p>
 
 <table>
   <tr>
     <td width="50%" valign="top"><b>Already signed in</b><br>It drives your real browser, so dashboards, inboxes and admin panels just work. No logging in again, no copied cookies.</td>
-    <td width="50%" valign="top"><b>One tab each</b><br>Every session is pinned to its own tab, including when you run several Claude Code or pi sessions at once, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another.</td>
+    <td width="50%" valign="top"><b>One tab each</b><br>Run several Claude Code and pi sessions together. Every session is pinned to its own tab. Close that tab and the agent stops safely.</td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><b>Easy to spot</b><br>The agent's tab gets a coral edge glow and its own favicon: a pointer for pi, a pointer with a sparkle for Claude Code.</td>
+    <td width="50%" valign="top"><b>Easy to spot</b><br>Blue for pi, coral for Claude Code. Each controlled page gets a matching edge glow and pointer favicon. Claude Code's pointer has a sparkle.</td>
     <td width="50%" valign="top"><b>Moves like a person</b><br>Clicks and drags travel a curved, eased path, so hover menus open on the way and pointer-path bot checks see real movement.</td>
   </tr>
 </table>
@@ -90,7 +90,7 @@ Then run `/browser connect` in your agent, or just ask it to use the browser.
 | --- | --- | --- |
 | `PI_BROWSER_PORT` | `9222` | Another remote debugging port |
 | `DA_BROWSER_INPUT_MODE` | `human` | `instant` for 40ms clicks instead of about a second, or `smooth` for a straight 200ms glide |
-| `PI_BROWSER_CONTROL_BANNER` | on | `0` to hide the coral glow and favicon, for clean screenshots and demo videos |
+| `PI_BROWSER_CONTROL_BANNER` | on | `0` to hide the edge glow and favicon, for clean screenshots and demo videos |
 
 ## Good to know
 

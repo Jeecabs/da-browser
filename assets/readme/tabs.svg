@@ -1,112 +1,147 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 540" width="880" height="540" role="img" aria-labelledby="t d">
-<title id="t">One browser, many independent sessions</title>
-<desc id="d">Your signed-in Arc with eight tabs. One pi session and three Claude Code sessions each drive a separate pinned tab, marked in coral with the agent's favicon. Your Gmail, Linear, Figma and Docs tabs are left alone. Claude Code session 1 checks a local app preview, with a coral edge glow and a curved pointer path to the Open preview button.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 772" width="1200" height="772" role="img" aria-labelledby="title description">
+<title id="title">One browser, a whole team</title>
+<desc id="description">One pi session and three Claude Code sessions work in parallel in your signed-in Arc browser. Each session connects to its own pinned tab: pi tests sign-up, while Claude Code sessions review the UI, check accessibility and research an API. pi has a blue pointer favicon and blue page glow. Claude Code has coral pointer-and-sparkle favicons. Your Gmail, Figma, Linear and Docs tabs stay yours.</desc>
 <defs>
-<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0 0 L10 5 L0 10 z"/></marker>
-<linearGradient id="glow-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef5c50" stop-opacity=".6"/><stop offset="1" stop-color="#ef5c50" stop-opacity="0"/></linearGradient>
-<linearGradient id="glow-left" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ef5c50" stop-opacity=".4"/><stop offset="1" stop-color="#ef5c50" stop-opacity="0"/></linearGradient>
-<linearGradient id="glow-right" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#ef5c50" stop-opacity=".4"/><stop offset="1" stop-color="#ef5c50" stop-opacity="0"/></linearGradient>
-<clipPath id="page"><rect x="520" y="84" width="336" height="414" rx="10"/></clipPath>
-<image id="pi-favicon" href="data:image/png;base64,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" width="24" height="24"/>
-<image id="claude-favicon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAHXElEQVR42rWXW4xkVRWGv3+fU5fumgaHccBxgldAxBBGQBIikWgCThQ0hjQPXhJDyKhDYuTF+KLQhkgi0Rd8kARBE8DAvCgqKISriSIEhJBgJOPcGBiGGXqmb9XVVWfv34d96tKNPnIeuqp3ap+1/rX+9a+1YOIxyDddXvIuPU/cdHlp0OSZJo0LDHB09+ym00879YOQmn2gOQAY1L9sAAP6QJMG/cGAJtBPSQDN0HK/SCJGAzQBylb/uNOhrbfdtbTRliYPXt911fTpW8/4kcTXndL2QkJO2IBdXwHS+LsBIWyj0SvzqZ2QApWN8BtY95ZFmtPP7lkZ2pSNuPkmwSvTVb/zcNmZuix1e1QxJiQTnV844YTro8ncgbInafhD1b5YGAqFUE63qXr9vy/EaueW085a5uY5B/bMBs3Npf7aplvKztRl/aWV1UEVo5NxleSU5Gg51p/JIlkYker/kRAhA629iVGs9ZUdF5VJve5qr2y3Lp1R+Inm5hJ7ZoMAFn7wjS1twv4AnZjs2sBE2A1pArAzWBRUo8wBTdFOCWJCp5yKWm389nFRljlt4CBhe7VJ+WHdfvexADBF45ymwkys0tj4MM9mbNzgZLCEpDGFNXJWocRra9KOi6UrviCvroLCiOjRdrMsOgP3zwUoAaJjq6HCJBujEWozuoxzFKQAQeOz4ZdoXBSShGzCuefBtvdDowFVBWUJMY6CqJQLJAAUOGWyDJEYovPFbrdOQwBJljSRC5OSSWBJ6q7gpSWKz14J554HW7ZSXP0VvLaGFxfGqQIRcs2UAFXfajSGiAKsdgkXXIR2flnp0T86vfCcFApotyGlOhpD+AJJkgg7r0YXXwLbtsNgAGs99PkvUl74KfzSP0mP/QWv9qAoRhjCyAtP5DwHQfrI2RTX71a5+0Z05gdgeQlSBGQjEYII44j4xLx95A3or0EIGW1V4TeP4GNv4RhrJowJnWU3KIfRSHbO2+FD9vxRMTUF519A8bGPk558jPTIQ3hpSep0alHKDHWM+G9/haceJ1x4MeH63dBqke75NenJxzIHpqayY8nrHaiS1QgmZNmQy4ZYPGmOH4OPng0rK7gsCDuvQjsuxA89SHr2mczRdhuqyrJxZ0YqCtILz6OXX4LTzyA9/QS8Z3NGHtMEcd+RAkhZTaUQYDCQDx9CRTFSbi8vwpYthOu+RXHD93JaFhdNjppk5zA3G/iVl/GLz48rZhiptN6BXIb9pEa7RMHr5NYH9uNhzkQmz2CA1/rwifMpzjoHP/W40qMP44UFmO7ki+0p0ksv5jtT05Plh5QrrZp0oAjB2HgoJiQoS/z6YeiuQigmQqeMqtuFIqCdV1HsuIj0x9+Rnnsm/6TZGpKV9d23rp4kymoiBZQTGlt3GTUacPwYzL+dCbQhd4SQf7q8CJs3E67bRfmd76LtZ0KssoCJcdey7RhtO98tJxyoam8UApLGnXZl2X7jMGqUG9rfBLiiHHY9tOPTFDd+H3U2mRhr0RGklHuEQpbwlEZGy9GfYTk7WQaKUgZ88ABccmm2Hybbb+1FjLBwEh9+jfSfvfjgPrzW06jcUnQulyxWw2a5jgO1YWpZlSXJ5NwfOogHg5z3CenHQKOEEyeofn4rzM9nEEUBzSZOHo4pGjbN8V2vL8MRKgMhaMhUGg381puwuJhDPXxa7Wxs0If3baP40jXZ2ZlToNVGtgVGQVIY20vJOSKmHGrgZFItyXU12IaiwAsL+M0jWR1Tymev/quW2rpvfOZzhCt24hPzmWxpw7jkhGO0YxoBreokhIkCXT/34dx6+3147WAOYbuN9+8j3nYrfu4faLoDKeHuMsU11xI+eZG9vCzKUgzBxAip5tXQzkRDzVVAtU6fR47XJeNDBzLiXo/0wH1QBOL995L2vgqdDsQKp0Txzeulbdtxr5dxpJTfUUd3nSpO6oBS0jpm2OPPssQHD5iYSA//Ae/bC50ZGPSJv7oDFk5mTvR6MHMKxXW7QDJV5Um0tnFKOEtynrxGA0lq9PMkZI17fK4MhyIz/ae3kJ5+EjqboBpAq42PHiHefWfmQqOBigYsLuR0KUjGQ/4rJcuqWy9yk/7IgcZUfHUtxuVCYVxjMZmULAmHIO/fN2ooGDwYoM4m/OILTnvus9QgPvInql/enmcFyGhjNDX5DBRB6sXYnaLxbwD5gdlC1+6Jvd1f+0WrM3VDb3mlh2nkoVPj7Umy7awPqZbU4ewYI3rvVtLxY5KCKYqaUx5dd45qf3pqqr3a7d4xfef93/bsbDFaTN6e37tpxvy52WxeOlgbUJEnxFrDhxKdtaV+eR7x6jxXAygb5Kb2jtVPZVGo2Wqy1us92yJeybbzlrh5zutWs6O7ZzedVrR/jPmqxBkBcNywEEygWj89a6KbDsst+5CHbd6y+e1itfzDrXc9uDRazf7Xcupds6fSbH2oO4it/7vqDjvYxNMI8iBZG89LNfrdwcqBzb/5/cmNtnjHej47W7xb67lnZ4uN6/l/AZ0KXx/lYe2gAAAAAElFTkSuQmCC" width="24" height="24"/>
+<linearGradient id="glow-top" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#428fe8" stop-opacity=".48"/><stop offset="1" stop-color="#428fe8" stop-opacity="0"/></linearGradient>
+<linearGradient id="glow-left" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#428fe8" stop-opacity=".32"/><stop offset="1" stop-color="#428fe8" stop-opacity="0"/></linearGradient>
+<linearGradient id="glow-right" x1="1" y1="0" x2="0" y2="0"><stop stop-color="#428fe8" stop-opacity=".32"/><stop offset="1" stop-color="#428fe8" stop-opacity="0"/></linearGradient>
+<linearGradient id="glow-bottom" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#428fe8" stop-opacity=".22"/><stop offset="1" stop-color="#428fe8" stop-opacity="0"/></linearGradient>
+<clipPath id="page-clip"><rect x="626" y="244" width="526" height="460" rx="12"/></clipPath>
+<image id="pi-favicon" href="data:image/png;base64,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" width="32" height="32"/>
+<image id="claude-favicon" href="data:image/png;base64,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" width="32" height="32"/>
 </defs>
 <style>
-svg { --window:#ffffff; --side:#f6f8fa; --row:#ffffff; --line:#d1d9e0; --text:#1f2328; --muted:#59636e; --skel:#e6eaef; --page:#ffffff; --button:#1f2328; --button-text:#ffffff; }
+svg { --ink:#222b38; --muted:#647184; --line:#dce3ec; --chrome:#f3f6fa; --surface:#fff; --field:#f7f9fc; --blue:#428fe8; --blue-ink:#286ebd; --blue-wash:#eaf3ff; --coral:#ef5c50; --coral-wash:#fff0ed; --button:#222b38; --button-text:#fff; }
 @media (prefers-color-scheme: dark) {
-  svg { --window:#0d1117; --side:#151b23; --row:#0d1117; --line:#3d444d; --text:#e6edf3; --muted:#9198a1; --skel:#262c36; --page:#0d1117; --button:#e6edf3; --button-text:#0d1117; }
+ svg { --ink:#edf2f9; --muted:#a3afc0; --line:#303e50; --chrome:#17202c; --surface:#0f1722; --field:#1b2635; --blue-ink:#89c1ff; --blue-wash:#203650; --coral-wash:#382928; --button:#edf2f9; --button-text:#0f1722; }
 }
-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-.window { fill: var(--side); stroke: var(--line); }
-.row { fill: var(--row); stroke: var(--line); }
-.agent-row { fill: #ef5c50; fill-opacity: .12; stroke: #ef5c50; stroke-opacity: .7; stroke-width: 1.5; }
-.active-row { stroke-opacity: 1; stroke-width: 2; }
-.fav { fill: var(--skel); }
-.fav-letter { fill: var(--muted); font-size: 11px; font-weight: 600; }
-.tab { fill: var(--muted); font-size: 14px; }
-.tab-agent { fill: var(--text); font-size: 14px; font-weight: 600; }
-.agent { fill: var(--window); stroke: #ef5c50; stroke-width: 1.5; }
-.agent-name { fill: var(--text); font-size: 15px; font-weight: 650; }
-.agent-sub { fill: var(--muted); font-size: 12px; }
-.link { fill: none; stroke: #ef5c50; stroke-width: 2; }
-.arrow { fill: #ef5c50; }
-.caption { fill: var(--muted); font-size: 12.5px; }
-.dot { fill: var(--line); }
-.page { fill: var(--page); stroke: var(--line); }
-.page-title { fill: var(--text); font-size: 19px; font-weight: 650; }
-.skel { fill: var(--skel); }
-.button { fill: var(--button); }
-.button-text { fill: var(--button-text); font-size: 13px; font-weight: 600; }
-.path { fill: none; stroke: #ef5c50; stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; }
-.cursor { fill: var(--text); stroke: var(--window); stroke-width: 1.2; stroke-linejoin: round; }
-.url { fill: var(--muted); font-size: 12px; }
+text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; fill:var(--ink); }
+.headline { font-size:44px; font-weight:750; letter-spacing:-1.8px; }
+.intro { font-size:20px; fill:var(--muted); }
+.section { font-size:16px; font-weight:650; fill:var(--muted); }
+.pitch { font-size:27px; font-weight:650; letter-spacing:-.7px; }
+.caption { font-size:16px; fill:var(--muted); }
+.browser { fill:var(--chrome); stroke:var(--line); stroke-width:1.5; }
+.surface { fill:var(--surface); }
+.line { stroke:var(--line); stroke-width:1; }
+.user-tab { font-size:18px; fill:var(--muted); }
+.user-favicon { fill:var(--line); }
+.user-letter { font-size:12px; font-weight:650; fill:var(--muted); }
+.session { fill:var(--surface); }
+.session-name { font-size:18px; font-weight:650; }
+.task { font-size:16px; fill:var(--muted); }
+.pi-tab { fill:var(--blue-wash); stroke:var(--blue); stroke-width:1.5; }
+.claude-tab { fill:var(--coral-wash); }
+.tab-title { font-size:18px; font-weight:600; }
+.tab-address { font-size:12px; fill:var(--muted); }
+.connector { fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.blue { stroke:var(--blue); }
+.coral { stroke:var(--coral); }
+.url { font-family:ui-monospace,"SFMono-Regular",Consolas,monospace; font-size:14px; fill:var(--muted); }
+.app-name { font-size:17px; font-weight:650; }
+.app-nav { font-size:14px; fill:var(--muted); }
+.app-title { font-size:29px; font-weight:700; letter-spacing:-.7px; }
+.field-label { font-size:15px; font-weight:550; }
+.field { fill:var(--field); stroke:var(--line); }
+.field-value { font-size:16px; }
+.button { fill:var(--button); }
+.button-text { font-size:16px; font-weight:600; fill:var(--button-text); }
+.activity { font-size:14px; fill:var(--blue-ink); }
+.cursor { fill:var(--ink); stroke:var(--surface); stroke-width:1.6; stroke-linejoin:round; }
 </style>
-<rect class="window" x="240" y="20" width="628" height="494" rx="16"/>
-<circle class="dot" cx="262" cy="42" r="5"/><circle class="dot" cx="279" cy="42" r="5"/><circle class="dot" cx="296" cy="42" r="5"/>
-<text class="caption" x="316" y="46.5">Your Arc, signed in as you</text>
-<text class="caption" x="16" y="144">Independent sessions</text>
-<rect class="row" x="256" y="84" width="248" height="36" rx="9"/>
-<rect class="fav" x="266" y="92" width="20" height="20" rx="5"/><text class="fav-letter" x="276" y="106.5" text-anchor="middle">G</text>
-<text class="tab" x="296" y="107">Gmail</text>
-<rect class="row" x="256" y="130" width="248" height="36" rx="9"/>
-<rect class="fav" x="266" y="138" width="20" height="20" rx="5"/><text class="fav-letter" x="276" y="152.5" text-anchor="middle">L</text>
-<text class="tab" x="296" y="153">Linear</text>
-<rect class="agent-row" x="256" y="176" width="248" height="36" rx="9"/>
-<use href="#pi-favicon" transform="translate(266 184) scale(.833333)"/>
-<text class="tab-agent" x="296" y="199">localhost:3000</text>
-<rect class="agent" x="16" y="167" width="202" height="54" rx="12"/>
-<use href="#pi-favicon" x="30" y="182"/>
-<text class="agent-name" x="64" y="192">pi</text>
-<text class="agent-sub" x="64" y="209">its own pinned tab</text>
-<path class="link" d="M218 194 C 230 194, 238 194, 250 194" marker-end="url(#arrow)"/>
-<rect class="agent-row active-row" x="256" y="232" width="248" height="36" rx="9"/>
-<use href="#claude-favicon" transform="translate(266 240) scale(.833333)"/>
-<text class="tab-agent" x="296" y="255">localhost:3000/preview</text>
-<rect class="agent" x="16" y="223" width="202" height="54" rx="12"/>
-<use href="#claude-favicon" x="30" y="238"/>
-<text class="agent-name" x="64" y="248">Claude Code</text>
-<text class="agent-sub" x="64" y="265">session 1 · its own tab</text>
-<path class="link" d="M218 250 C 230 250, 238 250, 250 250" marker-end="url(#arrow)"/>
-<rect class="agent-row" x="256" y="288" width="248" height="36" rx="9"/>
-<use href="#claude-favicon" transform="translate(266 296) scale(.833333)"/>
-<text class="tab-agent" x="296" y="311">localhost:3000/settings</text>
-<rect class="agent" x="16" y="279" width="202" height="54" rx="12"/>
-<use href="#claude-favicon" x="30" y="294"/>
-<text class="agent-name" x="64" y="304">Claude Code</text>
-<text class="agent-sub" x="64" y="321">session 2 · its own tab</text>
-<path class="link" d="M218 306 C 230 306, 238 306, 250 306" marker-end="url(#arrow)"/>
-<rect class="agent-row" x="256" y="344" width="248" height="36" rx="9"/>
-<use href="#claude-favicon" transform="translate(266 352) scale(.833333)"/>
-<text class="tab-agent" x="296" y="367">localhost:3000/pricing</text>
-<rect class="agent" x="16" y="335" width="202" height="54" rx="12"/>
-<use href="#claude-favicon" x="30" y="350"/>
-<text class="agent-name" x="64" y="360">Claude Code</text>
-<text class="agent-sub" x="64" y="377">session 3 · its own tab</text>
-<path class="link" d="M218 362 C 230 362, 238 362, 250 362" marker-end="url(#arrow)"/>
-<rect class="row" x="256" y="400" width="248" height="36" rx="9"/>
-<rect class="fav" x="266" y="408" width="20" height="20" rx="5"/><text class="fav-letter" x="276" y="422.5" text-anchor="middle">F</text>
-<text class="tab" x="296" y="423">Figma</text>
-<rect class="row" x="256" y="446" width="248" height="36" rx="9"/>
-<rect class="fav" x="266" y="454" width="20" height="20" rx="5"/><text class="fav-letter" x="276" y="468.5" text-anchor="middle">D</text>
-<text class="tab" x="296" y="469">Docs</text>
-<text class="caption" x="16" y="426">Every session gets</text>
-<text class="caption" x="16" y="445">its own pinned tab.</text>
-<g clip-path="url(#page)">
-<rect class="page" x="520" y="84" width="336" height="414" rx="10"/>
-<rect x="520" y="84" width="336" height="18" fill="url(#glow-top)"/>
-<rect x="520" y="84" width="10" height="414" fill="url(#glow-left)"/>
-<rect x="846" y="84" width="10" height="414" fill="url(#glow-right)"/>
+<text class="headline" x="32" y="78">One browser, a whole team</text>
+<text class="intro" x="32" y="119">Run pi and multiple Claude Code sessions in parallel, each in its own tab.</text>
+<text class="pitch" x="32" y="249">Give each session</text>
+<text class="pitch" x="32" y="282">a job of its own.</text>
+<text class="caption" x="32" y="321">They work side by side.</text>
+<text class="section" x="32" y="356">Working in parallel</text>
+<text class="section" x="338" y="169">Your signed-in browser</text>
+<rect class="browser" x="338" y="188" width="830" height="532" rx="18"/>
+<circle cx="360" cy="211" r="4.5" fill="var(--line)"/><circle cx="376" cy="211" r="4.5" fill="var(--line)"/><circle cx="392" cy="211" r="4.5" fill="var(--line)"/>
+<text class="caption" x="412" y="217">Arc</text>
+<rect class="surface" x="626" y="198" width="526" height="28" rx="7"/>
+<path d="M640 208h10m-6-4-4 4 4 4" class="connector" stroke="var(--muted)" stroke-width="1.5"/>
+<text class="url" x="666" y="217">localhost:3000/signup</text>
+<line class="line" x1="338" y1="235" x2="1168" y2="235"/>
+<line class="line" x1="614" y1="244" x2="614" y2="704"/>
+<text class="section" x="362" y="256">Your tabs</text>
+<rect class="user-favicon" x="368" y="271" width="22" height="22" rx="6"/>
+<text class="user-letter" x="379" y="286.5" text-anchor="middle">G</text>
+<text class="user-tab" x="402" y="289">Gmail</text>
+<rect class="user-favicon" x="368" y="313" width="22" height="22" rx="6"/>
+<text class="user-letter" x="379" y="328.5" text-anchor="middle">F</text>
+<text class="user-tab" x="402" y="331">Figma</text>
+<rect class="user-favicon" x="368" y="633" width="22" height="22" rx="6"/>
+<text class="user-letter" x="379" y="648.5" text-anchor="middle">L</text>
+<text class="user-tab" x="402" y="651">Linear</text>
+<rect class="user-favicon" x="368" y="675" width="22" height="22" rx="6"/>
+<text class="user-letter" x="379" y="690.5" text-anchor="middle">D</text>
+<text class="user-tab" x="402" y="693">Docs</text>
+<text class="section" x="362" y="363">Agent tabs</text>
+<rect class="session" x="32" y="374" width="266" height="52" rx="9"/>
+<path class="connector blue" d="M33 384v32" stroke-width="3"/>
+<use href="#pi-favicon" x="48" y="384"/>
+<text class="session-name" x="92" y="395">pi</text>
+<text class="task" x="92" y="417">Test the sign-up flow</text>
+<path class="connector blue" d="M306 400h42m-7-5 7 5-7 5"/>
+<rect class="pi-tab" x="354" y="374" width="250" height="52" rx="9"/>
+<use href="#pi-favicon" transform="translate(366 388) scale(.75)"/>
+<text class="tab-title" x="402" y="396">Sign-up test</text>
+<text class="tab-address" x="402" y="415">localhost:3000/signup</text>
+<rect class="session" x="32" y="434" width="266" height="52" rx="9"/>
+<path class="connector coral" d="M33 444v32" stroke-width="3"/>
+<use href="#claude-favicon" x="48" y="444"/>
+<text class="session-name" x="92" y="455">Claude Code 1</text>
+<text class="task" x="92" y="477">Review the UI</text>
+<path class="connector coral" d="M306 460h42m-7-5 7 5-7 5"/>
+<rect class="claude-tab" x="354" y="434" width="250" height="52" rx="9"/>
+<use href="#claude-favicon" transform="translate(366 448) scale(.75)"/>
+<text class="tab-title" x="402" y="456">UI review</text>
+<text class="tab-address" x="402" y="475">localhost:3000/preview</text>
+<rect class="session" x="32" y="494" width="266" height="52" rx="9"/>
+<path class="connector coral" d="M33 504v32" stroke-width="3"/>
+<use href="#claude-favicon" x="48" y="504"/>
+<text class="session-name" x="92" y="515">Claude Code 2</text>
+<text class="task" x="92" y="537">Check accessibility</text>
+<path class="connector coral" d="M306 520h42m-7-5 7 5-7 5"/>
+<rect class="claude-tab" x="354" y="494" width="250" height="52" rx="9"/>
+<use href="#claude-favicon" transform="translate(366 508) scale(.75)"/>
+<text class="tab-title" x="402" y="516">Accessibility</text>
+<text class="tab-address" x="402" y="535">localhost:3000/pricing</text>
+<rect class="session" x="32" y="554" width="266" height="52" rx="9"/>
+<path class="connector coral" d="M33 564v32" stroke-width="3"/>
+<use href="#claude-favicon" x="48" y="564"/>
+<text class="session-name" x="92" y="575">Claude Code 3</text>
+<text class="task" x="92" y="597">Research the API</text>
+<path class="connector coral" d="M306 580h42m-7-5 7 5-7 5"/>
+<rect class="claude-tab" x="354" y="554" width="250" height="52" rx="9"/>
+<use href="#claude-favicon" transform="translate(366 568) scale(.75)"/>
+<text class="tab-title" x="402" y="576">API docs</text>
+<text class="tab-address" x="402" y="595">docs.example.com</text>
+<g clip-path="url(#page-clip)">
+<rect class="surface" x="626" y="244" width="526" height="460" rx="12"/>
+<rect x="626" y="244" width="526" height="22" fill="url(#glow-top)"/>
+<rect x="626" y="244" width="12" height="460" fill="url(#glow-left)"/>
+<rect x="1140" y="244" width="12" height="460" fill="url(#glow-right)"/>
+<rect x="626" y="692" width="526" height="12" fill="url(#glow-bottom)"/>
 </g>
-<rect x="520" y="84" width="336" height="414" rx="10" fill="none" stroke="#ef5c50" stroke-opacity=".55" stroke-width="1.5"/>
-<text class="url" x="540" y="117">localhost:3000/preview</text>
-<text class="page-title" x="540" y="156">Preview your app</text>
-<text class="caption" x="540" y="181">Check the latest UI changes</text>
-<text class="caption" x="540" y="200">in your local development app.</text>
-<rect class="skel" x="540" y="224" width="296" height="110" rx="8"/>
-<rect class="skel" x="540" y="352" width="224" height="9" rx="4"/>
-<rect class="skel" x="540" y="370" width="268" height="9" rx="4"/>
-<text class="caption" x="540" y="475">Claude Code · session 1</text>
-<rect class="button" x="672" y="422" width="164" height="36" rx="8"/>
-<text class="button-text" x="754" y="445.5" text-anchor="middle">Open preview</text>
-<path class="path" d="M566 350 C 580 444, 640 472, 685 444"/>
-<path class="cursor" d="M688 440 l0 17 l4.4 -4.2 l3.1 6.9 l2.6 -1.2 l-3 -6.7 l6 -0.2 z"/>
+<rect x="626" y="244" width="526" height="460" rx="12" fill="none" stroke="var(--blue)" stroke-opacity=".45" stroke-width="1.5"/>
+<text class="app-name" x="652" y="280">Your app</text>
+<text class="app-nav" x="1126" y="280" text-anchor="end">Sign in</text>
+<line class="line" x1="652" y1="298" x2="1126" y2="298"/>
+<text class="app-title" x="680" y="348">Create your account</text>
+<text class="caption" x="680" y="375">Set up your workspace.</text>
+<text class="field-label" x="680" y="409">Name</text>
+<rect class="field" x="680" y="420" width="422" height="44" rx="7"/>
+<text class="field-value" x="696" y="448">Alex</text>
+<text class="field-label" x="680" y="495">Email</text>
+<rect class="field" x="680" y="506" width="422" height="44" rx="7"/>
+<text class="field-value" x="696" y="534">alex@example.test</text>
+<rect class="button" x="680" y="577" width="422" height="46" rx="8"/>
+<text class="button-text" x="891" y="606" text-anchor="middle">Create account</text>
+<path class="connector blue" d="M651 480 C634 556 645 614 713 604" stroke-opacity=".65"/>
+<path class="cursor" d="M716 594v22l5.5-5.2 4 8.8 3.4-1.6-3.9-8.6 7.8-.3z"/>
+<use href="#pi-favicon" transform="translate(680 662) scale(.625)"/>
+<text class="activity" x="710" y="678">pi is testing the sign-up flow</text>
+<text class="caption" x="338" y="752">Your agents work in their own tabs while you keep using yours.</text>
 </svg>

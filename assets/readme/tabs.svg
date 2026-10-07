@@ -46,7 +46,6 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 .field-value { font-size:16px; }
 .button { fill:var(--button); }
 .button-text { font-size:16px; font-weight:600; fill:var(--button-text); }
-.activity { font-size:14px; fill:var(--blue-ink); }
 .cursor { fill:var(--ink); stroke:var(--surface); stroke-width:1.6; stroke-linejoin:round; }
 </style>
 <text class="headline" x="32" y="78">One browser, a whole team</text>
@@ -79,7 +78,6 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 <text class="user-tab" x="402" y="693">Docs</text>
 <text class="section" x="362" y="363">Agent tabs</text>
 <rect class="session" x="32" y="374" width="266" height="52" rx="9"/>
-<path class="connector blue" d="M33 384v32" stroke-width="3"/>
 <use href="#pi-favicon" x="48" y="384"/>
 <text class="session-name" x="92" y="395">pi</text>
 <text class="task" x="92" y="417">Test the sign-up flow</text>
@@ -89,7 +87,6 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 <text class="tab-title" x="402" y="396">Sign-up test</text>
 <text class="tab-address" x="402" y="415">localhost:3000/signup</text>
 <rect class="session" x="32" y="434" width="266" height="52" rx="9"/>
-<path class="connector coral" d="M33 444v32" stroke-width="3"/>
 <use href="#claude-favicon" x="48" y="444"/>
 <text class="session-name" x="92" y="455">Claude Code 1</text>
 <text class="task" x="92" y="477">Review the UI</text>
@@ -99,7 +96,6 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 <text class="tab-title" x="402" y="456">UI review</text>
 <text class="tab-address" x="402" y="475">localhost:3000/preview</text>
 <rect class="session" x="32" y="494" width="266" height="52" rx="9"/>
-<path class="connector coral" d="M33 504v32" stroke-width="3"/>
 <use href="#claude-favicon" x="48" y="504"/>
 <text class="session-name" x="92" y="515">Claude Code 2</text>
 <text class="task" x="92" y="537">Check accessibility</text>
@@ -109,7 +105,6 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 <text class="tab-title" x="402" y="516">Accessibility</text>
 <text class="tab-address" x="402" y="535">localhost:3000/pricing</text>
 <rect class="session" x="32" y="554" width="266" height="52" rx="9"/>
-<path class="connector coral" d="M33 564v32" stroke-width="3"/>
 <use href="#claude-favicon" x="48" y="564"/>
 <text class="session-name" x="92" y="575">Claude Code 3</text>
 <text class="task" x="92" y="597">Research the API</text>
@@ -141,7 +136,5 @@ text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-se
 <text class="button-text" x="891" y="606" text-anchor="middle">Create account</text>
 <path class="connector blue" d="M651 480 C634 556 645 614 713 604" stroke-opacity=".65"/>
 <path class="cursor" d="M716 594v22l5.5-5.2 4 8.8 3.4-1.6-3.9-8.6 7.8-.3z"/>
-<use href="#pi-favicon" transform="translate(680 662) scale(.625)"/>
-<text class="activity" x="710" y="678">pi is testing the sign-up flow</text>
 <text class="caption" x="338" y="752">Your agents work in their own tabs while you keep using yours.</text>
 </svg>

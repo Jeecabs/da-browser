@@ -9,13 +9,13 @@ Let [Claude Code](https://code.claude.com) and [pi](https://github.com/earendil-
 ## One browser, many agents
 
 <p align="center">
-  <img src="assets/readme/tabs.svg" alt="Your Arc with six tabs. pi and Claude Code each drive their own pinned tab, marked in coral with the agent's favicon; Gmail, Linear, Figma and Docs are left alone." width="800" />
+  <img src="assets/readme/tabs.svg" alt="Your Arc with eight tabs. One pi session and three Claude Code sessions each drive a separate pinned tab, marked in coral with the agent's favicon. Claude Code session 1 checks a local app preview; your Gmail, Linear, Figma and Docs tabs are left alone." width="800" />
 </p>
 
 <table>
   <tr>
     <td width="50%" valign="top"><b>Already signed in</b><br>It drives your real browser, so dashboards, inboxes and admin panels just work. No logging in again, no copied cookies.</td>
-    <td width="50%" valign="top"><b>One tab each</b><br>Every session is pinned to its own tab, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another.</td>
+    <td width="50%" valign="top"><b>One tab each</b><br>Every session is pinned to its own tab, including when you run several Claude Code or pi sessions at once, so agents don't wander into yours or each other's. If an agent's tab is closed, it stops safely instead of grabbing another.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>Easy to spot</b><br>The agent's tab gets a coral edge glow and its own favicon: a pointer for pi, a pointer with a sparkle for Claude Code.</td>
@@ -49,7 +49,7 @@ Then run `/browser connect` in your agent, or just ask it to use the browser.
 
 ## Ask for things like
 
-- "Open the Vercel dashboard and tell me why the last deploy failed."
+- "Open localhost:3000 and check the latest UI changes."
 - "Sign up on localhost:3000 with a test email and record a video of it."
 - "What's unread in my Slack?"
 - "Run an accessibility audit on our pricing page."

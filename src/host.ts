@@ -2,6 +2,8 @@
 // node:fs (pi-host.ts); the Claude Code mod implements it with $.process and $.fs.
 // Nothing in the core imports Node or a host package, so both can load it.
 
+import type { ControlledTabAccent } from "./controlled-tab.ts";
+
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -25,4 +27,6 @@ export interface BrowserHost {
   sessionPrefix: string;
   /** The controlled tab's favicon, so a glance at the tab says which agent drives it. */
   markerFaviconHref?: string;
+  /** Matches the page's edge glow to the host's favicon. Defaults to pi blue. */
+  markerAccent?: ControlledTabAccent;
 }

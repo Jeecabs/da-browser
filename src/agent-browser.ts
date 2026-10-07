@@ -1453,7 +1453,7 @@ async function markControlledTab(host: BrowserHost, state: BrowserState): Promis
   // lags by one step here, so the pill identifies the agent + what it's driving instead.
   const target = state.currentDomain ?? `cdp:${state.port}`;
   const labelText = controlledTabLabel(target);
-  await runAgentBrowser(host, ["eval", controlledTabMarkScript(labelText, host.markerFaviconHref)], 10_000, {
+  await runAgentBrowser(host, ["eval", controlledTabMarkScript(labelText, host.markerFaviconHref, host.markerAccent)], 10_000, {
     port: state.port,
     allowFailure: true,
   });

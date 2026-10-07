@@ -5,7 +5,7 @@ import { CLAUDE_FAVICON_HREF } from "../hooks/claude-favicon.ts";
 
 const root = new URL("../", import.meta.url);
 const control = `window.markControlledTab = () => {${controlledTabMarkScript("preview")}};
-window.markClaudeControlledTab = () => {${controlledTabMarkScript("preview", CLAUDE_FAVICON_HREF)}};
+window.markClaudeControlledTab = () => {${controlledTabMarkScript("preview", CLAUDE_FAVICON_HREF, "coral")}};
 window.clearControlledTab = () => {${CONTROLLED_TAB_CLEAR_SCRIPT}};`;
 const routes = new Map([
   ["/", ["preview/controlled-tab.html", "text/html; charset=utf-8"]],

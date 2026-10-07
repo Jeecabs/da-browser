@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>da browser · Control indicator</title>
+  <title>da browser control indicator</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237a8580'/%3E%3C/svg%3E">
   <style>
     * { box-sizing: border-box; }
@@ -20,7 +20,8 @@
     main { max-width: 1016px; margin: 74px auto 40px; padding: 0 48px; }
     .intro { display: grid; grid-template-columns: 1fr 130px; gap: 32px; align-items: center; }
     .eyebrow { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
-    .dot { width: 6px; height: 6px; border-radius: 50%; background: #ef6d5e; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #428fe8; }
+    body[data-agent=claude] .dot { background: #ef5c50; }
     body[data-controlled=false] .dot { background: #7a8580; }
     h1 { font-size: clamp(36px, 4.6vw, 55px); font-weight: 500; line-height: 1.07; letter-spacing: -2.4px; margin: 22px 0; max-width: 560px; }
     .intro p { color: var(--muted); max-width: 470px; line-height: 1.7; }
@@ -69,27 +70,27 @@
       <div>
         <div class="eyebrow"><span class="dot"></span><span id="status">Agent in control</span></div>
         <h1>A softer sign<br>of control.</h1>
-        <p>A warm coral edge glow and a distinctive pointer in the tab. Easy to recognise, with room for the page to breathe.</p>
+        <p>A blue edge glow for pi and a coral glow for Claude Code, with a matching pointer in each tab. Easy to recognise, with room for the page to breathe.</p>
       </div>
-      <img class="large-icon" src="/favicon-source.png" alt="Coral rounded-square favicon with an ivory pointer">
+      <img class="large-icon" src="/favicon-source.png" alt="Blue rounded-square favicon with an ivory pointer">
     </div>
     <div class="tabs" aria-label="Favicon at actual browser-tab size">
       <div class="sample light">
         <div class="tabstrip"><div class="tab"><img src="/favicon-32.png" alt=""><span>Project workspace</span><span class="close" aria-hidden="true">×</span></div></div>
-        <div class="sample-body">Light tab strip<span>16 px · actual size</span></div>
+        <div class="sample-body">Light tab strip<span>16 px at actual size</span></div>
       </div>
       <div class="sample dark">
         <div class="tabstrip"><div class="tab"><img src="/favicon-32.png" alt=""><span>Project workspace</span><span class="close" aria-hidden="true">×</span></div></div>
-        <div class="sample-body">Dark tab strip<span>16 px · actual size</span></div>
+        <div class="sample-body">Dark tab strip<span>16 px at actual size</span></div>
       </div>
     </div>
     <div class="details">
-      <div class="detail"><b>Recognise the agent</b><p>pi uses a plain pointer. Claude uses a pointer with a sparkle.</p><img src="/favicon-32.png" width="32" height="32" alt="pi pointer"> <img src="/claude-favicon-32.png" width="32" height="32" alt="Claude pointer with sparkle"></div>
-      <div class="detail"><b>Soft at the edges</b><p>Coral fades gently into the page, with a warmer highlight along the top.</p></div>
+      <div class="detail"><b>Recognise the agent</b><p>pi uses a blue pointer tile. Claude Code uses a coral pointer tile with a sparkle.</p><img src="/favicon-32.png" width="32" height="32" alt="pi pointer"> <img src="/claude-favicon-32.png" width="32" height="32" alt="Claude pointer with sparkle"></div>
+      <div class="detail"><b>Soft at the edges</b><p>Each agent's colour fades gently into the page, with a softer highlight along the top.</p></div>
       <div class="detail"><b>Still and unobtrusive</b><p>No looping motion. Clicks, scrolling and the page layout work as usual.</p></div>
       <div class="detail"><b>Clear when released</b><p>The glow disappears and the site's original favicon returns.</p></div>
     </div>
-    <footer><span class="dot"></span>Live preview · try the controls above to compare.</footer>
+    <footer><span class="dot"></span>Try the controls above to compare.</footer>
   </main>
   <script src="/control.js"></script>
   <script>
@@ -98,10 +99,11 @@
     window.markControlledTab();
     document.getElementById('agent').addEventListener('click', (event) => {
       claude = !claude;
+      document.body.dataset.agent = claude ? 'claude' : 'pi';
       event.currentTarget.textContent = claude ? 'Switch to pi' : 'Switch to Claude';
       event.currentTarget.setAttribute('aria-pressed', String(claude));
       document.querySelector('.large-icon').src = claude ? '/claude-favicon-source.png' : '/favicon-source.png';
-      document.querySelector('.large-icon').alt = claude ? 'Coral favicon with an ivory pointer and sparkle' : 'Coral favicon with an ivory pointer';
+      document.querySelector('.large-icon').alt = claude ? 'Coral favicon with an ivory pointer and sparkle' : 'Blue favicon with an ivory pointer';
       document.querySelectorAll('.tab img').forEach((icon) => { icon.src = claude ? '/claude-favicon-32.png' : '/favicon-32.png'; });
       window.clearControlledTab();
       if (document.body.dataset.controlled === 'true') mark();

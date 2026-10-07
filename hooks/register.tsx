@@ -87,6 +87,7 @@ async function makeHost($: $): Promise<BrowserHost> {
     sessionId,
     sessionPrefix: 'cc',
     markerFaviconHref: CLAUDE_FAVICON_HREF,
+    markerAccent: 'coral',
   }
 }
 

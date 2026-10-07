@@ -40,7 +40,7 @@ _Avoid_: Global permanent artifact store
 
 - **da browser** is installed separately from `pi-extensions`.
 - The browser core imports neither Node nor a **Host** package, because the Claude Code mod runs without Node. Host differences live in the adapters.
-- Each **Host** names its daemon sessions (`pi-…`, `cc-…`) and its **Controlled Tab** favicon (pointer, spark), so neither can adopt the other's tab and a glance says which agent holds one.
+- Each **Host** names its daemon sessions (`pi-…`, `cc-…`) and its **Controlled Tab** marker (blue pointer and glow for pi, coral pointer with sparkle and glow for Claude Code), so neither can adopt the other's tab and a glance says which agent holds one.
 - **Trusted Browser Automation** depends on the local Arc/Chromium auth context and CDP port.
 - **Trusted Browser Automation** cannot use agent-browser domain/WebRTC containment on pre-existing CDP pages. CDP commands run in a dedicated daemon session and explicitly clear inherited allowlists. Explicit-URL reads can still use them.
 - A **Curated Browser Wrapper** should keep schemas strict and use `prepareArguments` for resumed-session compatibility.

@@ -96,7 +96,7 @@ Reload pi if already running:
 - A recording films the controlled tab in place. Chrome does not paint a background tab, so start brings a hidden tab to the front, and stop warns when the tab never painted (a minimised or covered window) or was hidden when the take ended. A tab hidden mid-take and shown again before stop goes unwarned. Navigation in the tab is followed; `browser_tab` new/switch is not, so `restart` to film the new tab.
 - A daemon that exits mid-take truncates the video. Each host stops a running recording, HAR or trace when its session ends, and `/browser cleanup` stops them first. A take left idle for an hour is still lost with its daemon, and status then reports it.
 - Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
-- `browser_connect({ engine: "obscura" })` (or `/browser connect obscura`) moves every browser tool to a headless [Obscura](https://agent-browser.dev/engines/obscura) browser that agent-browser launches on its own daemon. It is fast but signed out, and it has known accessibility, hidden-element, iframe and screenshot gaps, so use it for quick checks on local dev or public pages. Private and local addresses are allowed. The `obscura` binary must be on `PATH`. `browser_connect` without `engine` switches back, and the user's browser keeps its pinned tab meanwhile.
+- `browser_connect({ engine: "obscura" })` (or `/browser connect obscura`) moves every browser tool to a headless [Obscura](https://agent-browser.dev/engines/obscura) browser that agent-browser launches on its own daemon. It is light but signed out, and it has known accessibility, hidden-element, iframe and screenshot gaps, so use it for quick checks on local dev or public pages. See [Obscura limits](#obscura-limits) before relying on it. Private and local addresses are allowed. The `obscura` binary must be on `PATH`. `browser_connect` without `engine` switches back, and the user's browser keeps its pinned tab meanwhile.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.
 - agent-browser HARs omit the `Cookie`, `Accept`, `Origin`, and `Sec-Fetch-*` request headers. `browser_cookies` exports only cookies sent to the current page URL, so open the API's origin first.
@@ -116,3 +116,20 @@ pnpm check
 pnpm test
 pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pinning
 ```
+
+## Obscura limits
+
+Tested with Obscura 0.2.4 and agent-browser 0.39.0 against skimate.ai (a Next.js app), with headless Chrome as the baseline.
+
+These work as in Chrome: opening pages, snapshots (including `selector`, `delta` and annotated checkpoints), screenshots (full page, element and mobile viewport), `browser_eval`, `browser_read` of the tab, waits on text, URL and network idle, history and `pushstate`, extra tabs, viewport, device, colour scheme and geolocation, console and network logs, HAR capture, cookie export, axe audits, and plain HTML forms (fill, type, select, check, and clicks by CSS selector).
+
+| Area | What happens | Workaround |
+| --- | --- | --- |
+| Clicks by ref | `browser_click`, `browser_find` and hover by `@ref` fail with a `DOM.getBoxModel` float error when the element's box has a fractional size, which most text links have ([agent-browser#2070](https://github.com/vercel-labs/agent-browser/issues/2070)) | `browser_command ["click", "<css selector>"]`, or `browser_open` the link's URL |
+| React textareas | `HTMLTextAreaElement.prototype` has no `value` property, so typing or filling a React-controlled textarea crashes the app into its error boundary | Use the user's browser for forms |
+| Client-side navigation | Some routes render an empty `main` after an in-app link click (Powder chase did every time; Trending did not) | `browser_open` the URL directly |
+| Rendering | No WebGL, so pages that need it throw: skimate.ai's resort globe fell into its error state. Web fonts never load, and button labels can wrap | Use the user's browser for visual QA or WebGL pages |
+| Timezone | Always reports `Europe/Berlin`, whatever the machine's zone | Don't trust dates or times rendered on the page |
+| Not supported | `browser_record`, `browser_trace`, `browser_set offline`, `browser_vitals` (no paint timings, so every metric is empty), and `browser_react` (the DevTools hook never installs) | Use the user's browser |
+| Speed | Page loads were no faster overall than headless Chrome: Obscura won one of five pages. It is light, using about 40 MB idle and 250 MB with skimate.ai open | Pick it for being signed out and light, not for speed |
+

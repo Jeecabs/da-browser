@@ -61,7 +61,8 @@ export const BROWSER_GUIDELINES = [
   "Prefer browser_find when the target has a role, label, text, placeholder, alt, title or testid; it saves a snapshot round-trip. It always performs its action; to look without acting, use browser_snapshot or browser_get.",
   "After browser_open, browser_nav or a submission the page is mid-load. Rely on waitMode networkidle (the default), or follow up with browser_wait on text, urlPattern, load or fn rather than plain milliseconds.",
   "This is the user's own signed-in browser: never perform mutations the user did not ask for.",
-  "For quick churn that needs no login, such as checking local dev pages or public sites, browser_connect engine=obscura switches to a fast headless browser that is signed out. browser_connect without engine switches back to the user's browser.",
+  "For quick churn that needs no login, such as checking local dev pages or public sites, browser_connect engine=obscura switches to a light headless browser that is signed out. browser_connect without engine switches back to the user's browser.",
+  "On Obscura, a click, hover or browser_find action by @ref fails on most text links (agent-browser #2070), so click by CSS selector with browser_command [\"click\", \"<selector>\"] or open the link's URL. Typing into a React textarea crashes the page, and client-side navigation can leave it blank, so switch back to the user's browser for forms and reload with browser_open after a blank page.",
   "On tab_gone, strict isolation worked: the pinned tab closed and no other tab was adopted. Recover explicitly with browser_tab new, browser_tab list then switch by targetId, or browser_connect; do not retry blindly.",
 ];
 
@@ -96,7 +97,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
           type: "string",
           enum: ["arc", "obscura"],
           description:
-            "arc (default): the user's signed-in browser. obscura: a fast headless browser with no cookies or logins and gaps in accessibility and screenshot fidelity, for quick checks on local dev or public pages.",
+            "arc (default): the user's signed-in browser. obscura: a light headless browser with no cookies or logins, no WebGL, and gaps in clicking, forms and rendering, for quick checks on local dev or public pages.",
         },
       },
     },

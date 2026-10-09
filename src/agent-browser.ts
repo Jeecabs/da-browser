@@ -255,8 +255,9 @@ async function connectObscura(host: BrowserHost, state: BrowserState): Promise<B
   state.lastError = undefined;
   return {
     summary: [
-      "Connected to a headless Obscura browser: fast, but signed out (no cookies, logins or extensions) and not yet at Chrome parity.",
-      "Local dev URLs are allowed. Run browser_connect without engine to return to the user's browser.",
+      "Connected to a headless Obscura browser: light, but signed out (no cookies, logins or extensions) and not yet at Chrome parity.",
+      "Local dev URLs are allowed. @ref clicks fail on most text links (agent-browser #2070), so click by CSS selector through browser_command or open links by URL. React textareas crash when typed into.",
+      "Run browser_connect without engine to return to the user's browser.",
     ].join("\n"),
     diagnostics: {
       engine: "obscura",

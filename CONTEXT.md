@@ -29,7 +29,7 @@ A browser-down, target-gone, or busy-page state that should produce a clear reco
 _Avoid_: Raw protocol failure, silent retry loop
 
 **Obscura Session**:
-A headless, signed-out browser (agent-browser's experimental Obscura engine) that a session switches to with `browser_connect engine=obscura`, for fast churn on local dev or public pages that need no auth. agent-browser launches and owns it on its own daemon (`…-obscura`), so there is no **Controlled Tab** to pin or mark.
+A headless, signed-out browser (agent-browser's experimental Obscura engine) that a session switches to with `browser_connect engine=obscura`, for quick, light churn on local dev or public pages that need no auth. agent-browser launches and owns it on its own daemon (`…-obscura`), so there is no **Controlled Tab** to pin or mark.
 _Avoid_: Using it for signed-in work, treating it as Chrome-equivalent
 
 **Derived Client**:

@@ -406,7 +406,7 @@ describe("fixes from a real-browser run", () => {
         const envelope = '{"success":false,"data":null,"error":"No recording in progress"}';
         const host = {
             exec: async (_command: string, args: string[]) =>
-                args[0] === "--version" ? { stdout: "agent-browser 0.38.1", stderr: "", code: 0 } : { stdout: envelope, stderr: "", code: 1 },
+                args[0] === "--version" ? { stdout: "agent-browser 0.39.0", stderr: "", code: 0 } : { stdout: envelope, stderr: "", code: 1 },
             ensureDir: async () => {},
             sessionId: "s",
             sessionPrefix: "pi",

@@ -28,6 +28,10 @@ _Avoid_: Hidden background browser, most-recent-tab adoption, cross-session targ
 A browser-down, target-gone, or busy-page state that should produce a clear recovery step or one automatic retry.
 _Avoid_: Raw protocol failure, silent retry loop
 
+**Obscura Session**:
+A headless, signed-out browser (agent-browser's experimental Obscura engine) that a session switches to with `browser_connect engine=obscura`, for fast churn on local dev or public pages that need no auth. agent-browser launches and owns it on its own daemon (`…-obscura`), so there is no **Controlled Tab** to pin or mark.
+_Avoid_: Using it for signed-in work, treating it as Chrome-equivalent
+
 **Derived Client**:
 A standalone HTTP client generated from one recorded session by the `derive-client` skill, so repeat automation of a site skips the browser. It authenticates with a cookie file exported by `browser_cookies`, and the browser is needed again only to refresh the login.
 _Avoid_: Scraper, browser-driven loop for every call

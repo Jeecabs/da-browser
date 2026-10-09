@@ -10,6 +10,8 @@ import {
 import {
   agentBrowserSessionName,
   buildA11yArgs,
+  buildObscuraInvocationArgs,
+  obscuraSessionName,
   buildCdpInvocationArgs,
   buildFindArgs,
   buildHarArgs,
@@ -67,7 +69,7 @@ import {
   controlledTabMarkScript,
   CONTROLLED_TAB_CLEAR_SCRIPT,
 } from "./controlled-tab.ts";
-import type { BrowserState, ConnectionProbe, WaitMode } from "./state.ts";
+import type { BrowserState, BrowserTarget, ConnectionProbe, WaitMode } from "./state.ts";
 import {
   domainFromUrl,
   isLocalUrl,
@@ -161,6 +163,7 @@ export async function connectBrowser(
 ): Promise<BrowserActionResult> {
   await ensureArtifactDir(host, state);
   await assertAgentBrowserInstalled(host, state);
+  if (state.engine === "obscura") return connectObscura(host, state);
 
   const debugPortListening = await isPortListening(host, state.port);
   if (!debugPortListening) {
@@ -199,7 +202,7 @@ export async function connectBrowser(
     await refreshCurrentUrl(host, state, false);
   } catch (error) {
     if (!(error instanceof CdpError) || error.kind !== "tab-gone") throw error;
-    await runAgentBrowser(host, ["tab", "new"], 30_000, { port: state.port });
+    await runAgentBrowser(host, ["tab", "new"], 30_000, { target: state });
     recoveredPinnedTab = true;
     await refreshCurrentUrl(host, state, false);
   }
@@ -228,6 +231,47 @@ export async function connectBrowser(
   };
 }
 
+/**
+ * The start-up warning when the `obscura` binary is not on PATH, else undefined. It only
+ * matters once an agent asks for engine=obscura, but a warning at start beats a failed switch.
+ */
+export async function obscuraMissingWarning(host: BrowserHost): Promise<string | undefined> {
+  const result = await host.exec("obscura", ["--version"], { timeout: 5_000 }).catch(() => undefined);
+  if (result?.code === 0) return undefined;
+  return "Obscura is not installed, so browser_connect engine=obscura will fail. Install the binary on PATH: https://agent-browser.dev/engines/obscura";
+}
+
+/** Starts (or reuses) this session's headless Obscura daemon; the first command launches it. */
+async function connectObscura(host: BrowserHost, state: BrowserState): Promise<BrowserActionResult> {
+  const missing = await obscuraMissingWarning(host);
+  if (missing) {
+    state.engine = undefined;
+    throw new Error(`${missing}\nStill using the user's browser.`);
+  }
+  await refreshCurrentUrl(host, state, false);
+  await refreshActiveTarget(host, state);
+  state.connected = true;
+  state.lastAction = "connect obscura";
+  state.lastError = undefined;
+  return {
+    summary: [
+      "Connected to a headless Obscura browser: fast, but signed out (no cookies, logins or extensions) and not yet at Chrome parity.",
+      "Local dev URLs are allowed. Run browser_connect without engine to return to the user's browser.",
+    ].join("\n"),
+    diagnostics: {
+      engine: "obscura",
+      agentBrowserSession: daemonSessionName(host, state),
+      currentUrl: state.currentUrl,
+    },
+  };
+}
+
+function daemonSessionName(host: BrowserHost, state: BrowserState): string {
+  return state.engine === "obscura"
+    ? obscuraSessionName(host.sessionId, host.sessionPrefix)
+    : agentBrowserSessionName(host.sessionId, host.sessionPrefix);
+}
+
 export async function openBrowserPage(
   host: BrowserHost,
   state: BrowserState,
@@ -240,8 +284,8 @@ export async function openBrowserPage(
   // --enable registers the vendored React DevTools hook before this navigation commits,
   // which is what unlocks the `react …` commands on the opened page.
   const args = options.enableReactDevtools ? ["open", "--enable", "react-devtools", url] : ["open", url];
-  await runAgentBrowser(host, args, 120_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, args, 120_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -271,7 +315,7 @@ export async function snapshotBrowserPage(
   await ensureArtifactDir(host, state);
 
   const args = buildSnapshotArgs({ interactiveOnly, ...options });
-  const snapshot = await runAgentBrowser(host, args, 60_000, { port: state.port });
+  const snapshot = await runAgentBrowser(host, args, 60_000, { target: state });
 
   const snapshotFile = artifactPath(state, label, "txt");
   await host.writeFile(snapshotFile, snapshot);
@@ -314,7 +358,7 @@ export async function readBrowserContent(
   const displayArgs = buildReadArgs(params);
   const needsBrowser = !params.url;
   const timeout = params.timeoutMs !== undefined ? params.timeoutMs + 15_000 : 60_000;
-  const parsed = await runAgentBrowserJSON(host, cliArgs, timeout, needsBrowser ? { port: state.port } : {});
+  const parsed = await runAgentBrowserJSON(host, cliArgs, timeout, needsBrowser ? { target: state } : {});
   const content = params.json ? JSON.stringify(parsed ?? null, null, 2) : readPayloadContent(parsed);
   const label = params.label ?? (params.url ? `read-${domainFromUrl(params.url) ?? "url"}` : "read-active-tab");
   const formatted = await formatToolText(host, content || "(no content)", {
@@ -368,8 +412,8 @@ export async function clickBrowserElement(
   // --human moves the pointer along a curved, eased path before pressing, so hover-gated
   // UI and pointer-path bot checks see a real approach instead of a teleport.
   const clickArgs = human ? ["click", `@${normalizedRef}`, "--human"] : ["click", `@${normalizedRef}`];
-  await runAgentBrowser(host, clickArgs, 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, clickArgs, 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -406,11 +450,11 @@ export async function findBrowserElement(
   // buildFindArgs enforces a concrete action — the CLI would otherwise default to click,
   // turning a "just locate" call into a page mutation.
   const args = buildFindArgs(params);
-  const output = await runAgentBrowser(host, args, 60_000, { port: state.port, local });
+  const output = await runAgentBrowser(host, args, 60_000, { target: state, local });
 
   const mutating = MUTATING_FIND_ACTIONS.has(params.action);
   const waitMode = params.waitMode ?? (mutating ? "networkidle" : "none");
-  await waitForLoad(host, waitMode, state.port, local);
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -459,8 +503,8 @@ export async function fillBrowserElement(
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(host, ["fill", `@${normalizedRef}`, text], 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, ["fill", `@${normalizedRef}`, text], 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -490,8 +534,8 @@ export async function selectBrowserOption(
 
   const local = isLocalUrl(state.currentUrl);
   const normalizedRef = normalizeRef(ref);
-  await runAgentBrowser(host, ["select", `@${normalizedRef}`, option], 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, ["select", `@${normalizedRef}`, option], 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -518,8 +562,8 @@ export async function pressBrowserKey(
 ): Promise<BrowserActionResult> {
   await ensureReady(host, state);
   const local = isLocalUrl(state.currentUrl);
-  await runAgentBrowser(host, ["press", key], 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, ["press", key], 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -550,8 +594,8 @@ export async function scrollBrowserPage(
   if (typeof pixels === "number") args.push(String(pixels));
   if (containerSelector) args.push("--selector", containerSelector);
   const local = isLocalUrl(state.currentUrl);
-  await runAgentBrowser(host, args, 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, args, 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -581,7 +625,7 @@ export async function waitInBrowser(
   // Give our kill-timeout headroom above the CLI's own wait timeout so agent-browser's
   // clearer timeout error wins over a hard process kill.
   const execTimeout = params.timeoutMs !== undefined ? params.timeoutMs + 15_000 : 120_000;
-  await runAgentBrowser(host, args, execTimeout, { port: state.port, local: isLocalUrl(state.currentUrl) });
+  await runAgentBrowser(host, args, execTimeout, { target: state, local: isLocalUrl(state.currentUrl) });
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -614,8 +658,8 @@ export async function navigateBrowser(
   // pushstate does an SPA client-side navigation (auto-detects the Next.js router and
   // triggers the RSC fetch) instead of a full page load.
   const args = action === "pushstate" ? ["pushstate", url as string] : [action];
-  await runAgentBrowser(host, args, 60_000, { port: state.port, local });
-  await waitForLoad(host, waitMode, state.port, local);
+  await runAgentBrowser(host, args, 60_000, { target: state, local });
+  await waitForLoad(host, waitMode, state, local);
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
 
@@ -651,7 +695,7 @@ export async function getBrowserInfo(
   }
   if (selector) args.push(selector);
 
-  const parsed = await runAgentBrowserJSON(host, args, 60_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, args, 60_000, { target: state });
   const result = extractGetResult(what, parsed);
   const summaryText = formatGetResult(what, result);
   const formatted = await formatToolText(host, summaryText, { label: `browser-${label}`, mode: "head" });
@@ -709,7 +753,7 @@ export async function debugBrowserPage(
   }
   if (options.clear && kind !== "network-request") args.push("--clear");
 
-  const output = await runAgentBrowser(host, args, 60_000, { port: state.port });
+  const output = await runAgentBrowser(host, args, 60_000, { target: state });
   const formatted = await formatToolText(host, output || "(no output)", {
     label: `browser-${options.label ?? kind}`,
     mode: "tail",
@@ -747,7 +791,7 @@ export async function runBrowserCommand(
   await ensureReady(host, state);
   const safeArgs = normalizeBrowserCommandArgs(args);
   const timeout = Math.min(Math.max(timeoutMs ?? 60_000, 1_000), 300_000);
-  const output = await runAgentBrowser(host, safeArgs, timeout, { port: state.port });
+  const output = await runAgentBrowser(host, safeArgs, timeout, { target: state });
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
   const formatted = await formatToolText(host, output || "(no output)", {
@@ -782,7 +826,7 @@ export async function evalInBrowser(
   await ensureReady(host, state);
   await ensureArtifactDir(host, state);
 
-  const output = await runAgentBrowser(host, ["eval", script], 120_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
+  const output = await runAgentBrowser(host, ["eval", script], 120_000, { target: state, local: isLocalUrl(state.currentUrl) });
   await markControlledTab(host, state);
   const evalFile = artifactPath(state, label, "txt");
   await host.writeFile(evalFile, output);
@@ -820,7 +864,7 @@ export async function checkpointBrowserPage(
   // legend on stdout, so a vision pass over the screenshot maps straight back to refs.
   // --if-changed/--threshold (0.38) skip an unchanged capture: no file, no vision tokens.
   const screenshotArgs = buildScreenshotArgs({ ...options, file: screenshotFile });
-  const shot = await runAgentBrowserJSON(host, screenshotArgs, 60_000, { port: state.port });
+  const shot = await runAgentBrowserJSON(host, screenshotArgs, 60_000, { target: state });
   const changed = !isPlainObject(shot) || shot.changed !== false;
   const legend = options.annotate ? formatAnnotationLegend(shot) : "";
   if (changed) state.lastScreenshotFile = screenshotFile;
@@ -861,7 +905,7 @@ export async function reactBrowser(
   const args = buildReactArgs(params);
   let output: string;
   try {
-    output = await runAgentBrowser(host, args, 60_000, { port: state.port, local: isLocalUrl(state.currentUrl) });
+    output = await runAgentBrowser(host, args, 60_000, { target: state, local: isLocalUrl(state.currentUrl) });
   } catch (error) {
     if (error instanceof Error && /react|devtools|hook/i.test(error.message)) {
       throw new Error(
@@ -904,7 +948,7 @@ export async function vitalsBrowser(
   const args = url ? ["vitals", url] : ["vitals"];
   const local = isLocalUrl(url) || isLocalUrl(state.currentUrl);
   // Vitals waits out LCP/INP observation windows, so give it a generous budget.
-  const output = await runAgentBrowser(host, args, 120_000, { port: state.port, local });
+  const output = await runAgentBrowser(host, args, 120_000, { target: state, local });
   await refreshCurrentUrl(host, state);
 
   const formatted = await formatToolText(host, output || "(no output)", {
@@ -939,7 +983,7 @@ export async function auditAccessibility(
   // machine-readable. formatToolText spills oversized reports into the artifact directory.
   const args = buildA11yArgs({ ...params, json: true });
   const parsed = await runAgentBrowserJSON(host, args, 120_000, {
-    port: state.port,
+    target: state,
     local: isLocalUrl(params.url) || isLocalUrl(state.currentUrl),
   });
   const report = JSON.stringify(parsed ?? null, null, 2);
@@ -994,7 +1038,7 @@ export async function tabBrowser(
   };
 
   if (params.action === "list") {
-    const parsed = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
+    const parsed = await runAgentBrowserJSON(host, args, 30_000, { target: state });
     const tabs = normalizeTabList(parsed);
     const active = tabs.find((tab) => tab.active === true);
     state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
@@ -1026,7 +1070,7 @@ export async function tabBrowser(
   }
   // Keep tab command results structured: 0.34 includes the durable targetId, and close can
   // intentionally leave a strict session in tab_gone instead of selecting the next tab.
-  const commandResult = await runAgentBrowserJSON(host, args, 60_000, { port: state.port });
+  const commandResult = await runAgentBrowserJSON(host, args, 60_000, { target: state });
   const tabs = await refreshActiveTarget(host, state);
 
   if (state.targetId) {
@@ -1079,7 +1123,7 @@ export async function isBrowserState(
   await ensureReady(host, state);
 
   const args = buildIsArgs(params);
-  const parsed = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, args, 30_000, { target: state });
   const value = extractBooleanResult(params.check, parsed);
 
   state.connected = true;
@@ -1105,7 +1149,7 @@ export async function setBrowser(
   await ensureReady(host, state);
 
   const args = buildSetArgs(params);
-  await runAgentBrowser(host, args, 30_000, { port: state.port });
+  await runAgentBrowser(host, args, 30_000, { target: state });
   await markControlledTab(host, state);
 
   state.connected = true;
@@ -1142,7 +1186,7 @@ export async function harBrowser(
   if (params.action === "start") {
     const file = artifactPath(state, params.label ?? "network", "har");
     const args = buildHarArgs({ action: "start", content: params.content });
-    await runAgentBrowser(host, args, 30_000, { port: state.port });
+    await runAgentBrowser(host, args, 30_000, { target: state });
     state.har = { file, startedAt: Date.now() };
     state.connected = true;
     state.lastAction = args.join(" ");
@@ -1162,7 +1206,7 @@ export async function harBrowser(
   const previous = state.har;
   const file = previous?.file ?? artifactPath(state, params.label ?? "network", "har");
   const args = buildHarArgs({ action: "stop", file });
-  await runAgentBrowser(host, args, 60_000, { port: state.port });
+  await runAgentBrowser(host, args, 60_000, { target: state });
   state.har = undefined;
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -1189,7 +1233,7 @@ export async function exportCookies(
 
   // agent-browser scopes `cookies get` to the pinned tab's URL, so the caller must be on the
   // origin whose cookies it wants. The values go straight to disk and never into the result.
-  const cookies = extractCookies(await runAgentBrowserJSON(host, ["cookies", "get"], 30_000, { port: state.port }));
+  const cookies = extractCookies(await runAgentBrowserJSON(host, ["cookies", "get"], 30_000, { target: state }));
   const file = params.path
     ? resolve(host.cwd, params.path.replace(/^~(?=$|\/)/, host.homeDir))
     : artifactPath(state, params.label ?? "cookies", "json");
@@ -1224,7 +1268,7 @@ export async function recordBrowser(
     const hiddenAtStop = previous ? await controlledTabHidden(host, state) : false;
     let stopped: unknown;
     try {
-      stopped = await runAgentBrowserJSON(host, buildRecordArgs({ action: "stop" }), 60_000, { port: state.port });
+      stopped = await runAgentBrowserJSON(host, buildRecordArgs({ action: "stop" }), 60_000, { target: state });
     } catch (error) {
       if (!/No recording in progress/.test(error instanceof Error ? error.message : String(error))) throw error;
       return {
@@ -1274,7 +1318,7 @@ export async function recordBrowser(
   const args = buildRecordArgs({ ...params, file });
   const visibility = await bringControlledTabForward(host, state);
   const previous = state.recording;
-  const started = await runAgentBrowserJSON(host, args, 30_000, { port: state.port });
+  const started = await runAgentBrowserJSON(host, args, 30_000, { target: state });
   await markControlledTab(host, state);
   const contactSheet = Boolean(params.contactSheet || params.contactSheetThreshold !== undefined);
   state.recording = { file, startedAt: Date.now(), ...(contactSheet ? { contactSheet } : {}) };
@@ -1314,7 +1358,7 @@ export async function recordBrowser(
  * `/json/activate` is the browser's own endpoint, so the session's tab pin is untouched.
  */
 async function bringControlledTabForward(host: BrowserHost, state: BrowserState): Promise<"visible" | "brought" | "hidden"> {
-  if (!(await controlledTabHidden(host, state))) return "visible";
+  if (state.engine === "obscura" || !(await controlledTabHidden(host, state))) return "visible";
   if (!state.targetId) await refreshActiveTarget(host, state);
   if (state.targetId) {
     await host.exec("curl", ["-sf", `http://localhost:${state.port}/json/activate/${state.targetId}`], { timeout: 5_000 });
@@ -1324,17 +1368,17 @@ async function bringControlledTabForward(host: BrowserHost, state: BrowserState)
 
 /** Whether the controlled tab is in the background, where Chrome does not paint it. */
 async function controlledTabHidden(host: BrowserHost, state: BrowserState): Promise<boolean> {
-  const visibility = await runAgentBrowser(host, ["eval", "document.visibilityState"], 10_000, { port: state.port, allowFailure: true });
+  const visibility = await runAgentBrowser(host, ["eval", "document.visibilityState"], 10_000, { target: state, allowFailure: true });
   return visibility.includes("hidden");
 }
 
 /** Whether this host's daemon is alive, asked without spawning one; undefined if unknown. */
-async function daemonRunning(host: BrowserHost): Promise<boolean | undefined> {
+async function daemonRunning(host: BrowserHost, state: BrowserState): Promise<boolean | undefined> {
   const listed = await host.exec("agent-browser", buildSessionListArgs(), { timeout: 5_000 }).catch(() => undefined);
   try {
     const data = listed?.code === 0 ? unwrapCliEnvelope(JSON.parse(listed.stdout)) : undefined;
     const sessions = isPlainObject(data) ? data.sessions : undefined;
-    return Array.isArray(sessions) ? sessions.includes(agentBrowserSessionName(host.sessionId, host.sessionPrefix)) : undefined;
+    return Array.isArray(sessions) ? sessions.includes(daemonSessionName(host, state)) : undefined;
   } catch {
     return undefined;
   }
@@ -1357,8 +1401,8 @@ export async function stopCapturesNow(host: BrowserHost, state: BrowserState): P
   state.tracing = undefined;
   // A stop is a CDP call, which would respawn a daemon that already exited and took the
   // captures with it, only to hear there is nothing to stop.
-  if (stops.length === 0 || (await daemonRunning(host)) === false) return;
-  await Promise.all(stops.map((args) => runAgentBrowser(host, args, 10_000, { port: state.port, allowFailure: true }).catch(() => "")));
+  if (stops.length === 0 || (await daemonRunning(host, state)) === false) return;
+  await Promise.all(stops.map((args) => runAgentBrowser(host, args, 10_000, { target: state, allowFailure: true }).catch(() => "")));
 }
 
 function readString(payload: unknown, key: string): string | undefined {
@@ -1396,7 +1440,7 @@ async function captureRecording(
     const label = params.label ?? options.kind;
     const file = artifactPath(state, label, options.extension);
     const args = options.buildArgs({ action: "start", file });
-    await runAgentBrowser(host, args, 30_000, { port: state.port });
+    await runAgentBrowser(host, args, 30_000, { target: state });
     await markControlledTab(host, state);
     state[options.kind] = { file, startedAt: Date.now() };
     state.connected = true;
@@ -1416,7 +1460,7 @@ async function captureRecording(
 
   const previous = state[options.kind];
   const args = options.buildArgs({ action: "stop" });
-  await runAgentBrowser(host, args, 60_000, { port: state.port });
+  await runAgentBrowser(host, args, 60_000, { target: state });
   state[options.kind] = undefined;
   state.connected = true;
   state.lastAction = args.join(" ");
@@ -1448,20 +1492,22 @@ export async function cleanupBrowserArtifacts(state: BrowserState): Promise<void
 
 
 async function markControlledTab(host: BrowserHost, state: BrowserState): Promise<void> {
-  if (!resolveControlBannerEnabled()) return;
+  // Obscura is headless: no person sees its tab, so there is nothing to mark.
+  if (!resolveControlBannerEnabled() || state.engine === "obscura") return;
   // currentDomain is refreshed just before this call, so it's the live target; lastAction
   // lags by one step here, so the pill identifies the agent + what it's driving instead.
   const target = state.currentDomain ?? `cdp:${state.port}`;
   const labelText = controlledTabLabel(target);
   await runAgentBrowser(host, ["eval", controlledTabMarkScript(labelText, host.markerFaviconHref, host.markerAccent)], 10_000, {
-    port: state.port,
+    target: state,
     allowFailure: true,
   });
 }
 
 async function clearControlledTab(host: BrowserHost, state: BrowserState): Promise<void> {
+  if (state.engine === "obscura") return;
   await runAgentBrowser(host, ["eval", CONTROLLED_TAB_CLEAR_SCRIPT], 10_000, {
-    port: state.port,
+    target: state,
     allowFailure: true,
   });
 }
@@ -1553,7 +1599,7 @@ async function tryEnsureTarget(host: BrowserHost, port: number): Promise<boolean
 async function ensureDaemonOnPort(host: BrowserHost, port: number): Promise<void> {
   let cdpUrl: string | undefined;
   try {
-    const data = await runAgentBrowserJSON(host, ["get", "cdp-url"], 10_000, { port });
+    const data = await runAgentBrowserJSON(host, ["get", "cdp-url"], 10_000, { target: { port } });
     if (isPlainObject(data) && typeof data.cdpUrl === "string") cdpUrl = data.cdpUrl;
   } catch {
     return; // no live session yet — the next command attaches fresh to the right port
@@ -1568,7 +1614,7 @@ async function ensureDaemonOnPort(host: BrowserHost, port: number): Promise<void
   }
   if (connectedPort === undefined || connectedPort === port) return;
 
-  await runAgentBrowser(host, ["close"], 15_000, { port, allowFailure: true });
+  await runAgentBrowser(host, ["close"], 15_000, { target: { port }, allowFailure: true });
 }
 
 async function fetchTargets(host: BrowserHost, port: number): Promise<CdpTarget[]> {
@@ -1622,7 +1668,8 @@ export async function verifyConnection(
   state: BrowserState,
 ): Promise<ConnectionProbe> {
   const agentBrowser = await probeAgentBrowserVersion(host, state);
-  const agentBrowserSession = agentBrowserSessionName(host.sessionId, host.sessionPrefix);
+  const agentBrowserSession = daemonSessionName(host, state);
+  if (state.engine === "obscura") return verifyObscura(host, state, agentBrowser, agentBrowserSession);
   const portListening = await isPortListening(host, state.port);
   if (!portListening) {
     state.connected = false;
@@ -1679,11 +1726,38 @@ export async function verifyConnection(
   };
 }
 
+/**
+ * Obscura has no port to probe, only its daemon. A live one is asked for its URL; a gone one
+ * is reported disconnected rather than respawned, since status must not launch a browser.
+ */
+async function verifyObscura(
+  host: BrowserHost,
+  state: BrowserState,
+  agentBrowser: AgentBrowserVersionProbe,
+  agentBrowserSession: string,
+): Promise<ConnectionProbe> {
+  const lostCaptures = await findLostCaptures(host, state);
+  const running = await daemonRunning(host, state);
+  if (running === true && agentBrowser.compatible) await refreshCurrentUrl(host, state);
+  state.connected = running === true;
+  if (lostCaptures) state.lastError = `The browser daemon exited, so the ${lostCaptures} in progress was lost.`;
+  return {
+    portListening: false,
+    pageTargets: 0,
+    agentBrowserSession,
+    pinTab: true,
+    tabBinding: "unknown",
+    agentBrowserVersion: agentBrowser.installed,
+    agentBrowserCompatible: agentBrowser.compatible,
+    requiredAgentBrowserVersion: agentBrowser.required,
+  };
+}
+
 /** Clears captures whose daemon is gone and names them, e.g. "recording, HAR"; else undefined. */
 async function findLostCaptures(host: BrowserHost, state: BrowserState): Promise<string | undefined> {
   if (!state.recording && !state.har && !state.tracing) return undefined;
   // Unknown is not gone: only a listing without this session clears state.
-  if ((await daemonRunning(host)) !== false) return undefined;
+  if ((await daemonRunning(host, state)) !== false) return undefined;
   const lost = [state.recording && "recording", state.har && "HAR", state.tracing && "trace"].filter(Boolean).join(", ");
   state.recording = undefined;
   state.har = undefined;
@@ -1725,7 +1799,7 @@ async function refreshCurrentUrl(
   state: BrowserState,
   allowFailure = true,
 ): Promise<void> {
-  const result = await runAgentBrowser(host, ["get", "url"], 10_000, { port: state.port, allowFailure });
+  const result = await runAgentBrowser(host, ["get", "url"], 10_000, { target: state, allowFailure });
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
@@ -1741,7 +1815,7 @@ async function refreshActiveTarget(
   host: BrowserHost,
   state: BrowserState,
 ): Promise<Array<Record<string, unknown>>> {
-  const parsed = await runAgentBrowserJSON(host, ["tab", "list"], 30_000, { port: state.port });
+  const parsed = await runAgentBrowserJSON(host, ["tab", "list"], 30_000, { target: state });
   const tabs = normalizeTabList(parsed);
   const active = tabs.find((tab) => tab.active === true);
   state.targetId = typeof active?.targetId === "string" ? active.targetId : undefined;
@@ -1763,11 +1837,15 @@ async function runAgentBrowser(
   host: BrowserHost,
   args: string[],
   timeout: number,
-  options: { allowFailure?: boolean; port?: number; local?: boolean } = {},
+  options: { allowFailure?: boolean; target?: BrowserTarget; local?: boolean } = {},
 ): Promise<string> {
-  let fullArgs = options.port !== undefined
-    ? buildCdpInvocationArgs(args, options.port, host.sessionId, host.sessionPrefix)
-    : args;
+  const target = options.target;
+  const obscura = target?.engine === "obscura";
+  let fullArgs = !target
+    ? args
+    : obscura
+      ? buildObscuraInvocationArgs(args, host.sessionId, host.sessionPrefix)
+      : buildCdpInvocationArgs(args, target.port, host.sessionId, host.sessionPrefix);
   let effectiveTimeout = timeout;
 
   // agent-browser honors --timeout only for `wait` operations (waitForSelector and
@@ -1781,10 +1859,12 @@ async function runAgentBrowser(
     effectiveTimeout = Math.max(timeout, localMs + 15_000);
   }
 
+  // Obscura blocks private addresses unless this is set when its daemon starts, and churning
+  // through a local dev server is what it's for. BrowserHost.exec takes no env, so use env(1).
   const exec = (): Promise<CommandResult> =>
-    host.exec("agent-browser", fullArgs, {
-      timeout: effectiveTimeout,
-    }) as Promise<CommandResult>;
+    (obscura
+      ? host.exec("env", ["OBSCURA_ALLOW_PRIVATE_NETWORK=1", "agent-browser", ...fullArgs], { timeout: effectiveTimeout })
+      : host.exec("agent-browser", fullArgs, { timeout: effectiveTimeout })) as Promise<CommandResult>;
 
   let result = await exec();
   if (result.code === 0) return joinAgentBrowserOutput(result);
@@ -1799,8 +1879,8 @@ async function runAgentBrowser(
   // Self-heal once: a transient vanished page target is usually recoverable by re-creating
   // one and letting agent-browser re-attach on retry. A strict `tab_gone` stop is deliberately
   // excluded: silently creating/adopting a tab would defeat 0.34's session isolation.
-  if (kind === "target-gone" && options.port !== undefined) {
-    const healed = await tryEnsureTarget(host, options.port);
+  if (kind === "target-gone" && target && !obscura) {
+    const healed = await tryEnsureTarget(host, target.port);
     if (healed) {
       result = await exec();
       if (result.code === 0) return joinAgentBrowserOutput(result);
@@ -1813,7 +1893,7 @@ async function runAgentBrowser(
   throw new CdpError(
     friendlyCdpMessage(
       kind,
-      options.port,
+      obscura ? undefined : target?.port,
       formatExecFailure("agent-browser", fullArgs, result),
       tabGone,
     ),
@@ -1852,7 +1932,7 @@ async function runAgentBrowserJSON(
   host: BrowserHost,
   args: string[],
   timeout: number,
-  options: { port?: number; local?: boolean } = {},
+  options: { target?: BrowserTarget; local?: boolean } = {},
 ): Promise<unknown> {
   const argsWithJson = args.includes("--json") ? args : [...args, "--json"];
   const output = await runAgentBrowser(host, argsWithJson, timeout, options);
@@ -1886,7 +1966,7 @@ function truncateOutputForError(output: string, max = 200): string {
 async function waitForLoad(
   host: BrowserHost,
   waitMode: WaitMode,
-  port: number,
+  target: BrowserTarget,
   local = false,
 ): Promise<void> {
   if (waitMode === "none") return;
@@ -1899,14 +1979,14 @@ async function waitForLoad(
     const settleMs = localBrowserSettleMs();
     const loadState = waitMode === "networkidle" ? "networkidle" : "load";
     await runAgentBrowser(host, ["wait", "--load", loadState, "--timeout", String(settleMs)], settleMs + 15_000, {
-      port,
+      target,
       allowFailure: true,
     });
     return;
   }
 
   const ms = waitMode === "networkidle" ? 2000 : 1000;
-  await runAgentBrowser(host, ["wait", String(ms)], ms + 30_000, { port });
+  await runAgentBrowser(host, ["wait", String(ms)], ms + 30_000, { target });
 }
 
 async function ensureArtifactDir(host: BrowserHost, state: BrowserState): Promise<void> {

@@ -5,6 +5,7 @@ import {
   connectBrowser,
   stopCapturesNow,
   verifyConnection,
+  obscuraMissingWarning,
   CdpError,
 } from '../src/agent-browser.ts'
 import { attachesAgentBrowserOverCdp } from '../src/agent-browser-args.ts'
@@ -177,6 +178,8 @@ async function startupChecks($: $): Promise<void> {
       `da-browser requires agent-browser >=${probe.requiredAgentBrowserVersion}; found ${probe.agentBrowserVersion ?? 'not found'}. Run: npm i -g agent-browser@latest`,
     )
   }
+  const obscuraWarning = await obscuraMissingWarning(await makeHost($))
+  if (obscuraWarning) $.ui.toast(obscuraWarning)
   refreshChip($)
   await persist($)
   const now = Date.now()
@@ -229,7 +232,7 @@ export const register: Register = on => {
     for (const tool of BROWSER_TOOLS) {
       await $.tool.register({ name: tool.name, description: tool.description, inputSchema: tool.parameters })
     }
-    await $.command.register({ name: 'browser', description: 'da-browser: connect [port] | status | cleanup' })
+    await $.command.register({ name: 'browser', description: 'da-browser: connect [port|obscura] | status | cleanup' })
     refreshChip($)
     $.clock.after(0, () => void startupChecks($).catch(() => {}))
     return started
@@ -314,6 +317,7 @@ export const register: Register = on => {
     const [subcommand, ...rest] = e.args.trim().split(/\s+/)
     try {
       if (subcommand === 'connect') {
+        current.engine = rest[0] === 'obscura' ? 'obscura' : undefined
         const port = Number(rest[0])
         if (Number.isInteger(port) && port > 0) current.port = resolveBrowserPort(port)
         const result = await connectBrowser(host, current)
@@ -330,7 +334,7 @@ export const register: Register = on => {
         current.lastError = undefined
         return { text: `Marked browser as disconnected. Artifact files remain in ${current.artifactDir}.` }
       }
-      return { text: 'Usage: /browser connect [port] | status | cleanup' }
+      return { text: 'Usage: /browser connect [port|obscura] | status | cleanup' }
     } catch (error) {
       handleFailure(error)
       return { text: error instanceof Error ? error.message : String(error) }

@@ -77,7 +77,7 @@ Then run `/browser connect` in your agent, or just ask it to use the browser.
 | Debug and audit | `browser_debug` `browser_eval` `browser_react` `browser_a11y` `browser_vitals` |
 | Set up | `browser_connect` `browser_status` `browser_set` `browser_command` |
 
-`/browser connect [port]`, `/browser status` and `/browser cleanup` run without starting a turn.
+`/browser connect [port|obscura]`, `/browser status` and `/browser cleanup` run without starting a turn.
 
 ## Skills
 

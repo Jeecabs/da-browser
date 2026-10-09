@@ -9,6 +9,7 @@ import {
   attachesAgentBrowserOverCdp,
   buildA11yArgs,
   buildCdpInvocationArgs,
+  buildObscuraInvocationArgs,
   buildFindArgs,
   buildHarArgs,
   buildIsArgs,
@@ -67,10 +68,10 @@ test("agent-browser version checks accept the minimum and newer releases", () =>
   assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
 
   assert.equal(supportsAgentBrowserVersion("0.34.0"), false);
-  assert.equal(supportsAgentBrowserVersion("0.38.0"), false);
-  assert.equal(supportsAgentBrowserVersion("0.38.1-beta.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.38.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.38.2"), false);
+  assert.equal(supportsAgentBrowserVersion("0.39.0-beta.1"), false);
   assert.equal(supportsAgentBrowserVersion("0.39.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.40.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
 });
@@ -117,6 +118,26 @@ test("CDP invocations isolate da-browser and clear incompatible inherited allowl
     () => buildCdpInvocationArgs(["--no-pin-tab", "get", "url"], 9222, "test"),
     /da-browser manages --no-pin-tab/,
   );
+});
+
+test("Obscura invocations get their own daemon, launch the engine, and attach to nothing", () => {
+  const id = "019fc9ca-9938-7f57-bb66-b91a0da459e4";
+  const args = buildObscuraInvocationArgs(["get", "url"], id, "cc");
+  assert.deepEqual(args, [
+    "--namespace",
+    "da-browser",
+    "--session",
+    `${buildCdpInvocationArgs([], 9222, id, "cc")[3]}-obscura`,
+    "--engine",
+    "obscura",
+    "--idle-timeout",
+    "1h",
+    "--input-mode",
+    "human",
+    "get",
+    "url",
+  ]);
+  assert.throws(() => buildObscuraInvocationArgs(["--engine", "chrome", "get", "url"], id), /da-browser manages --engine/);
 });
 
 test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => {

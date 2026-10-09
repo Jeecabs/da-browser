@@ -59,14 +59,7 @@ export function buildCdpInvocationArgs(
       "CDP-backed browser tools cannot use allowedDomains; use browser_read with an explicit URL or remove the allowlist.",
     );
   }
-  const managedFlag = commandArgs.find((arg) =>
-    ["--cdp", "--session", "--namespace", "--pin-tab", "--no-pin-tab", "--input-mode", "--idle-timeout"].some(
-      (flag) => arg === flag || arg.startsWith(`${flag}=`),
-    ),
-  );
-  if (managedFlag) {
-    throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
-  }
+  rejectManagedFlags(commandArgs);
 
   return [
     "--namespace",
@@ -82,6 +75,58 @@ export function buildCdpInvocationArgs(
     "",
     "--cdp",
     String(port),
+    ...commandArgs,
+  ];
+}
+
+function rejectManagedFlags(commandArgs: readonly string[]): void {
+  const managedFlag = commandArgs.find((arg) =>
+    [
+      "--cdp",
+      "--session",
+      "--namespace",
+      "--pin-tab",
+      "--no-pin-tab",
+      "--input-mode",
+      "--idle-timeout",
+      "--engine",
+      "--executable-path",
+    ].some((flag) => arg === flag || arg.startsWith(`${flag}=`)),
+  );
+  if (managedFlag) {
+    throw new Error(`da-browser manages ${managedFlag}; omit it from browser_command args.`);
+  }
+}
+
+/** Obscura gets its own daemon, so switching engines never drops the Arc tab binding. */
+export function obscuraSessionName(hostSessionId: string, prefix = "pi"): string {
+  return `${agentBrowserSessionName(hostSessionId, prefix)}-obscura`;
+}
+
+/**
+ * Build the global arguments for a command on this session's headless Obscura browser
+ * (agent-browser 0.39 `--engine obscura`). agent-browser launches and owns it, so there is
+ * no shared browser to pin a tab in, and it starts with no cookies or logins: it is for
+ * fast public or local-dev churn, not the user's signed-in sites.
+ * ponytail: the `obscura` binary must be on PATH; add --executable-path if one lives elsewhere.
+ */
+export function buildObscuraInvocationArgs(
+  commandArgs: readonly string[],
+  hostSessionId: string,
+  sessionPrefix = "pi",
+): string[] {
+  rejectManagedFlags(commandArgs);
+  return [
+    "--namespace",
+    DA_BROWSER_NAMESPACE,
+    "--session",
+    obscuraSessionName(hostSessionId, sessionPrefix),
+    "--engine",
+    "obscura",
+    "--idle-timeout",
+    DA_BROWSER_IDLE_TIMEOUT,
+    "--input-mode",
+    resolveInputMode(),
     ...commandArgs,
   ];
 }

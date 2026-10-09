@@ -61,6 +61,7 @@ export const BROWSER_GUIDELINES = [
   "Prefer browser_find when the target has a role, label, text, placeholder, alt, title or testid; it saves a snapshot round-trip. It always performs its action; to look without acting, use browser_snapshot or browser_get.",
   "After browser_open, browser_nav or a submission the page is mid-load. Rely on waitMode networkidle (the default), or follow up with browser_wait on text, urlPattern, load or fn rather than plain milliseconds.",
   "This is the user's own signed-in browser: never perform mutations the user did not ask for.",
+  "For quick churn that needs no login, such as checking local dev pages or public sites, browser_connect engine=obscura switches to a fast headless browser that is signed out. browser_connect without engine switches back to the user's browser.",
   "On tab_gone, strict isolation worked: the pinned tab closed and no other tab was adopted. Recover explicitly with browser_tab new, browser_tab list then switch by targetId, or browser_connect; do not retry blindly.",
 ];
 
@@ -85,14 +86,23 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
     name: "browser_connect",
     label: "Browser Connect",
     description:
-      "Connect a strictly tab-pinned agent-browser session to Arc or Chromium using a smart-default remote debugging port. Use it before dashboard automation when the browser has not been connected in this session.",
+      "Connect a strictly tab-pinned agent-browser session to Arc or Chromium using a smart-default remote debugging port. Use it before dashboard automation when the browser has not been connected in this session. engine=obscura switches every browser tool to a headless Obscura browser instead.",
     promptSnippet: "Connect browser automation to the user's existing authenticated browser session",
     parameters: {
       type: "object",
-      properties: { port: { type: "number", description: "Optional remote debugging port. Defaults to PI_BROWSER_PORT or 9222." } },
+      properties: {
+        port: { type: "number", description: "Optional remote debugging port. Defaults to PI_BROWSER_PORT or 9222." },
+        engine: {
+          type: "string",
+          enum: ["arc", "obscura"],
+          description:
+            "arc (default): the user's signed-in browser. obscura: a fast headless browser with no cookies or logins and gaps in accessibility and screenshot fidelity, for quick checks on local dev or public pages.",
+        },
+      },
     },
     compat: { aliases: { debugPort: "port" }, numberFields: ["port"] },
     run(host, state, input) {
+      state.engine = input.engine === "obscura" ? "obscura" : undefined;
       if (typeof input.port === "number") state.port = resolveBrowserPort(input.port);
       return connectBrowser(host, state);
     },

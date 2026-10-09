@@ -1,6 +1,6 @@
-// 0.38.1: conditional screenshots, snapshot deltas, --human pointer paths, and the
-// recording cursor/contact-sheet options this package exposes as tool parameters.
-export const MIN_AGENT_BROWSER_VERSION = "0.38.1";
+// 0.39.0: the experimental Obscura engine (browser_connect engine=obscura), and selector-scoped
+// snapshots that no longer duplicate or drop elements.
+export const MIN_AGENT_BROWSER_VERSION = "0.39.0";
 
 interface ParsedVersion {
   major: number;

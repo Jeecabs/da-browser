@@ -4,7 +4,9 @@ import path from "node:path";
 import test from "node:test";
 
 import { agentBrowserSessionName, buildCdpInvocationArgs } from "../src/agent-browser-args.ts";
+import { obscuraMissingWarning } from "../src/agent-browser.ts";
 import { controlledTabMarkScript } from "../src/controlled-tab.ts";
+import type { BrowserHost } from "../src/host.ts";
 import { basename, dirname, join, resolve } from "../src/paths.ts";
 import { sha256Hex } from "../src/sha256.ts";
 import { truncateText } from "../src/tool-output.ts";
@@ -52,4 +54,11 @@ test("the controlled-tab marker takes a host's favicon", () => {
   const custom = controlledTabMarkScript("x", "data:image/svg+xml,spark");
   assert.match(custom, /data:image\/svg\+xml,spark/);
   assert.doesNotMatch(custom, /data:image\/png;base64,/);
+});
+
+test("start warns only when the obscura binary is missing", async () => {
+  const host = (exec: BrowserHost["exec"]) => ({ exec }) as BrowserHost;
+  assert.equal(await obscuraMissingWarning(host(async () => ({ stdout: "obscura 0.2.4", stderr: "", code: 0 }))), undefined);
+  assert.match((await obscuraMissingWarning(host(async () => ({ stdout: "", stderr: "", code: 127 })))) ?? "", /Obscura is not installed/);
+  assert.match((await obscuraMissingWarning(host(async () => { throw new Error("ENOENT"); }))) ?? "", /Obscura is not installed/);
 });

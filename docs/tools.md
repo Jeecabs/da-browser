@@ -41,6 +41,7 @@ Reload pi if already running:
 | Command | Description |
 | --- | --- |
 | `/browser connect [port]` | Connect to Arc/Chromium through CDP |
+| `/browser connect obscura` | Switch to a headless, signed-out Obscura browser |
 | `/browser status` | Probe connection, page targets, browser version, artifacts |
 | `/browser cleanup` | Disconnect/reset browser state for the session |
 
@@ -49,7 +50,7 @@ Reload pi if already running:
 | Tool | Description |
 | --- | --- |
 | `browser_status` | Probe live CDP state plus strict session/target binding diagnostics |
-| `browser_connect` | Connect a strictly tab-pinned session to the browser auth context |
+| `browser_connect` | Connect a strictly tab-pinned session to the browser auth context, or `engine: "obscura"` for a headless one |
 | `browser_open` | Navigate to a URL |
 | `browser_snapshot` | Capture page accessibility snapshot, or `delta` changes only |
 | `browser_read` | Fetch markdown/llms-aware text, or read active tab |
@@ -95,6 +96,7 @@ Reload pi if already running:
 - A recording films the controlled tab in place. Chrome does not paint a background tab, so start brings a hidden tab to the front, and stop warns when the tab never painted (a minimised or covered window) or was hidden when the take ended. A tab hidden mid-take and shown again before stop goes unwarned. Navigation in the tab is followed; `browser_tab` new/switch is not, so `restart` to film the new tab.
 - A daemon that exits mid-take truncates the video. Each host stops a running recording, HAR or trace when its session ends, and `/browser cleanup` stops them first. A take left idle for an hour is still lost with its daemon, and status then reports it.
 - Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
+- `browser_connect({ engine: "obscura" })` (or `/browser connect obscura`) moves every browser tool to a headless [Obscura](https://agent-browser.dev/engines/obscura) browser that agent-browser launches on its own daemon. It is fast but signed out, and it has known accessibility, hidden-element, iframe and screenshot gaps, so use it for quick checks on local dev or public pages. Private and local addresses are allowed. The `obscura` binary must be on `PATH`. `browser_connect` without `engine` switches back, and the user's browser keeps its pinned tab meanwhile.
 - The artifact directory is `/tmp/da-browser/<cwd-slug>`.
 - HAR artifacts can contain cookies, authorization headers, and response bodies. Inspect before sharing.
 - agent-browser HARs omit the `Cookie`, `Accept`, `Origin`, and `Sec-Fetch-*` request headers. `browser_cookies` exports only cookies sent to the current page URL, so open the API's origin first.

@@ -17,7 +17,7 @@ function fakeHost(answer: (args: string[]) => ExecResult | undefined) {
     calls,
     async exec(command: string, args: string[]) {
       calls.push({ command, args });
-      if (command === "agent-browser" && args[0] === "--version") return ok("agent-browser 0.38.1");
+      if (command === "agent-browser" && args[0] === "--version") return ok("agent-browser 0.39.0");
       if (command === "lsof") return ok("Arc 1 user 1u IPv4 TCP 127.0.0.1:9222 (LISTEN)");
       if (command === "curl") return ok(args.some((arg) => arg.endsWith("/json/list")) ? "[]" : "{}");
       return answer(args) ?? ok();

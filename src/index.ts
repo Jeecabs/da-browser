@@ -9,6 +9,7 @@ import {
   connectBrowser,
   stopCapturesNow,
   verifyConnection,
+  obscuraMissingWarning,
   CdpError,
   type BrowserActionResult,
 } from "./agent-browser.ts";
@@ -211,6 +212,8 @@ export default function (pi: ExtensionAPI) {
     } catch {
       /* keep session startup usable if the probe itself fails */
     }
+    const obscuraWarning = await obscuraMissingWarning(piHost(pi, ctx));
+    if (obscuraWarning && ctx.hasUI) ctx.ui.notify(obscuraWarning, "warning");
     refreshUi(ctx);
   });
 
@@ -232,13 +235,14 @@ export default function (pi: ExtensionAPI) {
 
       try {
         if (!subcommand || subcommand === "help") {
-          ctx.ui.notify("Usage: /browser connect [port] | status | cleanup", "info");
+          ctx.ui.notify("Usage: /browser connect [port|obscura] | status | cleanup", "info");
           refreshUi(ctx);
           return;
         }
 
         if (subcommand === "connect") {
           const tokens = args.trim().split(/\s+/).slice(1);
+          state.engine = tokens[0] === "obscura" ? "obscura" : undefined;
           const portArg = Number(tokens[0]);
           if (Number.isInteger(portArg) && portArg > 0) state.port = resolveBrowserPort(portArg);
 

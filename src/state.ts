@@ -10,8 +10,13 @@ export interface BrowserRecordingState {
   contactSheet?: boolean;
 }
 
-export interface BrowserState {
+/** Where commands run: the user's browser on a CDP port, or this session's headless Obscura. */
+export interface BrowserTarget {
   port: number;
+  engine?: "obscura";
+}
+
+export interface BrowserState extends BrowserTarget {
   dashboardPort: number;
   artifactDir: string;
   connected: boolean;
@@ -91,6 +96,7 @@ export function mergeBrowserState(
   return {
     ...base,
     port: resolvedPort,
+    ...(persisted.engine === "obscura" ? { engine: "obscura" as const } : {}),
     dashboardPort: resolvedDashboardPort,
     connected: Boolean(persisted.connected),
     agentBrowserVersion: persisted.agentBrowserVersion,
@@ -118,6 +124,7 @@ export function mergeBrowserState(
 export function serializeBrowserState(state: BrowserState): Record<string, unknown> {
   return {
     port: state.port,
+    ...(state.engine ? { engine: state.engine } : {}),
     dashboardPort: state.dashboardPort,
     connected: state.connected,
     agentBrowserVersion: state.agentBrowserVersion,
@@ -217,7 +224,7 @@ export function connectionWord(health: ConnectionHealth): string {
 
 export function browserWidgetLines(state: BrowserState): string[] {
   const health = connectionHealth(state);
-  const lines = [`${connectionGlyph(health)} browser  ${connectionWord(health)}`];
+  const lines = [`${connectionGlyph(health)} ${state.engine ?? "browser"}  ${connectionWord(health)}`];
 
   if (state.tabGoneTargetId) {
     lines.push(`  pinned tab gone  ${state.tabGoneTargetId}`);
@@ -253,12 +260,14 @@ export function browserSummaryWithVersion(state: BrowserState, probe?: Connectio
 function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
   const health = connectionHealth(state);
   const verified = state.lastVerifiedAt ? `  verified ${formatRelativeTime(state.lastVerifiedAt)}` : "";
+  const obscura = state.engine === "obscura";
   const lines = [
-    `${connectionGlyph(health)} ${connectionWord(health)}  cdp:${state.port}${verified}`,
+    `${connectionGlyph(health)} ${connectionWord(health)}  ${obscura ? "obscura (headless, signed out)" : `cdp:${state.port}`}${verified}`,
     `  url       ${state.currentUrl ?? "-"}`,
     `  domain    ${state.currentDomain ?? "-"}`,
-    `  pin       strict${state.tabGoneTargetId ? " (tab gone)" : ""}`,
-    `  target    ${state.targetId ?? state.tabGoneTargetId ?? "-"}`,
+    ...(obscura
+      ? []
+      : [`  pin       strict${state.tabGoneTargetId ? " (tab gone)" : ""}`, `  target    ${state.targetId ?? state.tabGoneTargetId ?? "-"}`]),
     `  action    ${state.lastAction ?? "-"}`,
     `  snapshot  ${formatRelativeTime(state.lastSnapshotAt)}`,
     `  artifacts ${state.artifactDir}`,
@@ -268,10 +277,12 @@ function browserSummary(state: BrowserState, probe?: ConnectionProbe): string {
   // behind the asserted status above.
   if (probe) {
     lines.push(`  session   ${probe.agentBrowserSession}`);
-    lines.push(`  binding   ${probe.tabBinding}`);
-    if (probe.bindingError !== undefined) lines.push(`  bind err  ${probe.bindingError}`);
-    lines.push(`  port      ${probe.portListening ? "listening" : "not listening"}`);
-    lines.push(`  targets   ${probe.pageTargets} page${probe.pageTargets === 1 ? "" : "s"}`);
+    if (!obscura) {
+      lines.push(`  binding   ${probe.tabBinding}`);
+      if (probe.bindingError !== undefined) lines.push(`  bind err  ${probe.bindingError}`);
+      lines.push(`  port      ${probe.portListening ? "listening" : "not listening"}`);
+      lines.push(`  targets   ${probe.pageTargets} page${probe.pageTargets === 1 ? "" : "s"}`);
+    }
     if (probe.browser) lines.push(`  browser   ${probe.browser}`);
   }
 

@@ -51,9 +51,10 @@
     "overrides": {
       "protobufjs@7": "^7.5.6",
       "@protobufjs/utf8": "^1.1.1",
-      "undici@8": "^8.10.2",
+      "undici@8": "^8.12.2",
       "ws@8": "^8.21.0",
-      "brace-expansion@5": "^5.0.12"
+      "brace-expansion@5": "^5.0.12",
+      "zod": "^4.6.6"
     }
   }
 }

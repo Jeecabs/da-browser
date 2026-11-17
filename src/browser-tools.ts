@@ -44,6 +44,8 @@ export interface BrowserToolSpec {
   description: string;
   promptSnippet?: string;
   parameters: { type: "object"; properties: Record<string, unknown>; required?: string[] };
+  /** Only observes the page or connection, so hosts may skip approval for it. */
+  readOnly?: true;
   compat?: Parameters<typeof prepareCompatArguments>[1];
   /** Input fixes beyond compat, applied after it. */
   prepare?(args: Input): Input;
@@ -76,6 +78,7 @@ const LABEL = { type: "string", description: "Optional artifact label for saved 
 export const BROWSER_TOOLS: BrowserToolSpec[] = [
   {
     name: "browser_status",
+    readOnly: true,
     label: "Browser Status",
     description:
       "Probe agent-browser compatibility, live CDP state, and the known strict session-to-tab binding (session, targetId, tab_gone metadata). It actively probes the port, so trust it over assumptions about connection state.",
@@ -138,6 +141,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
   },
   {
     name: "browser_snapshot",
+    readOnly: true,
     label: "Browser Snapshot",
     description:
       "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs, and set delta=true when re-snapshotting the same page to get only the changes.",
@@ -175,6 +179,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
   },
   {
     name: "browser_read",
+    readOnly: true,
     label: "Browser Read",
     description:
       "Fetch agent-readable text from a URL with markdown/llms.txt-aware fallbacks, or read the rendered active browser tab when url is omitted. Use it for docs, articles, and text pages: a URL read needs no browser_connect, and a tab read keeps auth and client state.",
@@ -384,6 +389,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
   },
   {
     name: "browser_get",
+    readOnly: true,
     label: "Browser Get",
     description:
       "Read structured browser information such as text, html, value, attr, title, url, count, box, styles, or cdp-url",
@@ -490,6 +496,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
   },
   {
     name: "browser_is",
+    readOnly: true,
     label: "Browser Is",
     description:
       "Boolean assertions for visible/enabled/checked — returns structured details.result. Use it instead of regex-matching browser_get text.",
@@ -688,6 +695,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
   },
   {
     name: "browser_a11y",
+    readOnly: true,
     label: "Browser Accessibility",
     description:
       "Run an embedded axe-core accessibility audit on the active page or a URL, with optional WCAG tag filtering and selector scoping. Incomplete checks still need manual review.",

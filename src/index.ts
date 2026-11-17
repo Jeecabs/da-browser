@@ -288,6 +288,11 @@ export default function (pi: ExtensionAPI) {
       // Plain JSON schema: pi validates and coerces it like typebox; the cast is for the types.
       parameters: spec.parameters as unknown as TSchema,
       prepareArguments: (args) => prepareBrowserInput(spec, args),
+      // Every tool drives the one pinned tab and shares `state`; parallel calls would race on both.
+      executionMode: "sequential",
+      annotations: spec.readOnly
+        ? { readOnlyHint: true, destructiveHint: false, openWorldHint: true }
+        : { readOnlyHint: false, openWorldHint: true },
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
         try {
           const result = await spec.run(piHost(pi, ctx), state, params as Record<string, unknown>);

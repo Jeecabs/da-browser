@@ -53,6 +53,9 @@ export interface BrowserToolSpec {
 /** Compat aliases and string coercion, then the tool's own fixes: the same in both hosts. */
 export function prepareBrowserInput(spec: BrowserToolSpec, args: unknown): Input {
   const prepared = spec.compat ? prepareCompatArguments<Input>(args, spec.compat) : (args as Input);
+  // Hosts do not all enforce the schema; a missing field would reach agent-browser as undefined.
+  const missing = (spec.parameters.required ?? []).filter((key) => prepared?.[key] === undefined || prepared[key] === null);
+  if (missing.length) throw new Error(`${spec.name} requires ${missing.join(", ")}.`);
   return spec.prepare ? spec.prepare(prepared) : prepared;
 }
 

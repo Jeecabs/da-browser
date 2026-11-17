@@ -38,6 +38,12 @@ test("wait turns a legacy numeric selector into ms", () => {
   assert.equal(prepareBrowserInput(tool("browser_wait"), { selector: 750 }).ms, 750);
 });
 
+test("a missing required field is named instead of reaching agent-browser as undefined", () => {
+  assert.throws(() => prepareBrowserInput(tool("browser_find"), { locator: "text", action: "click" }), /browser_find requires value/);
+  assert.throws(() => prepareBrowserInput(tool("browser_scroll"), {}), /browser_scroll requires direction/);
+  assert.equal(prepareBrowserInput(tool("browser_find"), { locator: "role", role: "button", action: "click" }).value, "button");
+});
+
 test("tab stringifies a numeric index", () => {
   assert.equal(prepareBrowserInput(tool("browser_tab"), { action: "switch", index: 2 }).tab, "2");
 });

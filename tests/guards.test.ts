@@ -68,10 +68,12 @@ test("agent-browser version checks accept the minimum and newer releases", () =>
   assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
 
   assert.equal(supportsAgentBrowserVersion("0.34.0"), false);
-  assert.equal(supportsAgentBrowserVersion("0.38.2"), false);
-  assert.equal(supportsAgentBrowserVersion("0.39.0-beta.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.39.0"), true);
-  assert.equal(supportsAgentBrowserVersion("0.40.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.39.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.42.0"), false);
+  assert.equal(supportsAgentBrowserVersion("0.43.0-beta.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.43.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.43.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.44.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
 });

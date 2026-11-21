@@ -1,6 +1,7 @@
-// 0.39.0: the experimental Obscura engine (browser_connect engine=obscura), and selector-scoped
-// snapshots that no longer duplicate or drop elements.
-export const MIN_AGENT_BROWSER_VERSION = "0.39.0";
+// 0.43.0: snapshot hints for unnamed and same-named controls, the `page_wedged`, `tab_locked`
+// and `outcome_unknown` failures, and a daemon that re-attaches itself when --cdp changes.
+// See docs/agent-browser-v0.43.0.md.
+export const MIN_AGENT_BROWSER_VERSION = "0.43.0";
 
 interface ParsedVersion {
   major: number;

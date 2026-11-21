@@ -145,12 +145,24 @@ test("strict CDP pinning isolates Pi sessions, survives restart, and fails safe 
       `${baseUrl}/direct`,
     );
 
-    // Mirror browser_connect: the pin is applied before the first attach/probe.
-    await runAgentBrowser(
+    // `get cdp-url` never attaches or launches (agent-browser 0.42+), so a new session has
+    // no browser to report until a page command runs.
+    const unattached = parseJson(await runAgentBrowser(
       pinnedArgs(["get", "cdp-url", "--json"], cdpPort, VICTIM_PI_SESSION),
+      env,
+      { expect: 1, label: "victim cdp-url before attach" },
+    ));
+    assert.equal(unattached.error, "Browser not launched");
+
+    // Mirror browser_connect: the pin is applied before the first attach/probe.
+    const attached = await runAgentBrowser(
+      pinnedArgs(["get", "url", "--json"], cdpPort, VICTIM_PI_SESSION),
       env,
       { label: "victim pin-before-attach" },
     );
+    // A first attach reports its settings on stderr even with --json; stdout stays one envelope.
+    assert.equal(parseJson(attached).success, true);
+    diagnostics.attachNotice = attached.stderr;
     await runAgentBrowser(
       pinnedArgs(["open", `${baseUrl}/a`, "--json"], cdpPort, VICTIM_PI_SESSION),
       env,
@@ -165,7 +177,7 @@ test("strict CDP pinning isolates Pi sessions, survives restart, and fails safe 
     assert.equal(typeof victimTarget, "string");
 
     await runAgentBrowser(
-      pinnedArgs(["get", "cdp-url", "--json"], cdpPort, PEER_PI_SESSION),
+      pinnedArgs(["get", "url", "--json"], cdpPort, PEER_PI_SESSION),
       env,
       { label: "peer pin-before-attach" },
     );
@@ -180,6 +192,19 @@ test("strict CDP pinning isolates Pi sessions, survives restart, and fails safe 
     )).data.url;
     diagnostics.afterPeer = afterPeer;
     assert.equal(afterPeer, `${baseUrl}/a`, "peer session must not steal victim's active tab");
+
+    // Nor can the peer take it by naming its target (agent-browser 0.39.4 `tab_locked`).
+    const locked = parseJson(await runAgentBrowser(
+      pinnedArgs(["tab", String(victimTarget), "--json"], cdpPort, PEER_PI_SESSION),
+      env,
+      { expect: 1, label: "peer switch to victim's pinned tab" },
+    ));
+    diagnostics.tabLocked = locked.error;
+    assert.match(String(locked.error), /^tab_locked: /);
+    assert.equal(
+      parseJson(await runAgentBrowser(pinnedArgs(["get", "url", "--json"], cdpPort, PEER_PI_SESSION), env)).data.url,
+      `${baseUrl}/b`,
+    );
 
     // Stop only the attached daemon. The durable .target binding must restore the same tab.
     await closeSession(env, victimSession, "da-browser");

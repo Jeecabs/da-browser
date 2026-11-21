@@ -38,7 +38,7 @@ claude plugin install da-browser@da-browser
 pi install https://github.com/Jeecabs/da-browser
 ```
 
-**Both need** agent-browser 0.38.1 or newer, and Arc (or Chromium) started with remote debugging:
+**Both need** agent-browser 0.43.0 or newer (which needs Node 22), and Arc (or Chromium) started with remote debugging:
 
 ```bash
 npm install -g agent-browser@latest

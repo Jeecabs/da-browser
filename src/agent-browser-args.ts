@@ -138,13 +138,14 @@ export function buildSessionListArgs(): string[] {
 
 /**
  * Whether a shell command runs agent-browser attached over CDP (`--cdp`, `--auto-connect`,
- * `connect`), which skips the per-session pin and can take over another session's tab.
+ * `connect`, or the MCP tool `agent_browser_connect` through `mcp call`, 0.41), which skips
+ * the per-session pin and can take over another session's tab.
  * Matched only where agent-browser runs as a command (line start, or after ; & | ( ), so a
  * commit message or PR body that merely mentions it passes, as do version checks.
  * ponytail: spelling match, best effort; a script file or `xargs` that runs it gets past.
  */
 export function attachesAgentBrowserOverCdp(command: string): boolean {
-  return /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b)/.test(
+  return /(?:^|[;&|(]|\n)\s*(?:\w+=\S*\s+)*(?:npx\s+(?:-y\s+)?)?agent-browser\b[^\n;&|]*?(?:--cdp\b|--auto-connect\b|\sconnect\b|\bagent_browser_connect\b)/.test(
     command,
   );
 }
@@ -360,7 +361,14 @@ export function buildTabArgs(params: TabArgsOptions): string[] {
         throw new Error("browser_tab new does not accept a tab ref; use label to name the new tab.");
       }
       const args = ["tab", "new"];
-      if (params.label) args.push("--label", params.label.trim());
+      const label = params.label?.trim();
+      // agent-browser's rule, checked here so the error names the tool's own field.
+      if (label && (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(label) || /^t\d+$/i.test(label))) {
+        throw new Error(
+          `browser_tab label '${label}' is not valid: start with a letter, use only letters, digits, - and _, and avoid the tab-id form t<N>.`,
+        );
+      }
+      if (label) args.push("--label", label);
       if (params.url) args.push(params.url);
       return args;
     }

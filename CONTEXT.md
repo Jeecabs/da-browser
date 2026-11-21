@@ -52,6 +52,8 @@ _Avoid_: Global permanent artifact store
 - Every **Controlled Tab** uses agent-browser strict `--pin-tab` with a named, Pi-session-derived daemon. Its target binding survives daemon restarts, and user/other-session tabs must never steal it.
 - The pointer moves as a person's would by default (`--input-mode human`): clicks and drags take a curved path, at about a second each, rather than jumping.
 - A host's daemon exits after an hour without commands (`--idle-timeout`, which agent-browser does not apply to attached browsers by default), and the next command respawns it bound to the same **Controlled Tab**.
+- `outcome_unknown`, `page_wedged` and `tab_locked` are agent-browser's own stops, never **Recoverable CDP Failures**: the first may already have run, so none is retried.
+- Parsed values come from agent-browser's stdout alone. Its stderr carries daemon notices, which reach the agent only through `browser_command`.
 - A strict `tab_gone` is a safe isolation stop, not a retry signal. Preserve its durable target id and sanitized last URL; recovery must be explicit through tab new/switch or browser connect.
 - **Controlled Tab** state is session/branch scoped, not global truth.
 - **Recoverable CDP Failure** should say whether to relaunch Arc, reconnect, wait, or retry.

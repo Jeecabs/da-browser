@@ -228,5 +228,6 @@ Clear snippet, only for text you inserted yourself:
   ```
 
 - **"covered by … at its click point".** A sticky header or a modal is in the way. `scrollIntoView({ block: 'center' })` the target, or `browser_press` `Escape` to close a popup, then retry.
+- **"is not visible" or "is disabled, so the click would not reach it".** The click did not happen: Slack has not rendered or enabled that control yet. `browser_wait` on the selector (`state: "visible"`), then retry.
 - **`tab_gone`.** The controlled tab was closed. Recover with `browser_tab` `new` or `browser_connect`, then go through [Connect](#connect) again.
 - **The user wants proof.** `browser_checkpoint` saves a screenshot and a snapshot as a pair.

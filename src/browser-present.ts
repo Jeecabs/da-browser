@@ -86,7 +86,8 @@ export function joined(...parts: string[]): string {
 
 /**
  * Finds what a ref points at in an agent-browser snapshot (`- button "Merge" [ref=e12]`),
- * so a click reads `click "Merge"` instead of `click @e12`.
+ * so a click reads `click "Merge"` instead of `click @e12`, or `click button (icon:gear)`
+ * for a control with no name.
  */
 export function snapshotLabel(snapshot: string, ref: string): string | undefined {
   const id = ref.trim().replace(/^@+/, "");
@@ -97,7 +98,10 @@ export function snapshotLabel(snapshot: string, ref: string): string | undefined
   const match = line?.match(/^\s*-\s*([\w-]+)(?:\s+"((?:[^"\\]|\\.)*)")?/);
   if (!match) return undefined;
   const label = match[2]?.replace(/\\(.)/g, "$1").trim();
-  return label ? `"${clip(label, MAX_QUOTE)}"` : match[1];
+  if (label) return `"${clip(label, MAX_QUOTE)}"`;
+  // agent-browser 0.43 describes an unnamed control after its ref: `hint="icon:gear; id:x"`.
+  const hint = line?.match(/\]\s+hint="((?:[^"\\]|\\.)*)"/)?.[1]?.split(";")[0]?.trim();
+  return hint ? `${match[1]} (${clip(hint, MAX_QUOTE)})` : match[1];
 }
 
 /**
@@ -770,6 +774,9 @@ export function explainFailure(text: string): { reason: string; hint?: string } 
   if (/^Arc is not reachable/.test(first)) return { reason: "Arc not reachable", hint: "relaunch Arc with remote debugging, then /browser connect" };
   if (/pinned browser tab is gone/.test(first)) return { reason: "tab closed", hint: "/browser connect opens a fresh one" };
   if (/page target disappeared/.test(first)) return { reason: "page went away", hint: "/browser connect opens a fresh tab" };
+  if (/pinned by another agent session/.test(text)) return { reason: "tab belongs to another session", hint: "pick another tab, or open a new one" };
+  if (/controlled tab stopped responding/.test(text)) return { reason: "tab stopped responding", hint: "continue in a new tab and close the stuck one" };
+  if (/may or may not have run/.test(text)) return { reason: "no answer from the browser", hint: "the action may have run; check the page before repeating it" };
   if (/did not respond in time/.test(first)) return { reason: "page busy", hint: "retry, or wait for a known element first" };
   if (/requires agent-browser/i.test(text)) return { reason: "agent-browser too old", hint: "npm i -g agent-browser@latest" };
   return { reason: first.length > 100 ? `${first.slice(0, 99)}…` : first || "failed" };

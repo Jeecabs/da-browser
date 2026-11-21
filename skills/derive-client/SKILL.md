@@ -7,6 +7,8 @@ description: Reverse-engineer a website's internal API from one recorded da-brow
 
 A browser is the right tool for the first visit and the wrong one for the hundredth. Record the site once with `browser_har`, work out its API offline, then write a client that calls that API directly.
 
+agent-browser's experimental saved flows (`browser_command` with `["flow", …]`) replay a recorded task from inside the CLI. Use this skill when the result must be a standalone client that runs without agent-browser.
+
 `<skill-dir>` below means the directory containing this SKILL.md, which is the parent of the skill's location. Commands run from the user's project, not from here, so always expand it to the absolute path.
 
 - `<skill-dir>/scripts/har-endpoints.mjs` turns a HAR into numbered endpoints with templated paths, param variance, merged response types and auth headers. **Secrets are masked in its output, so read the HAR through it and never `cat`/`jq` the raw file into context.**

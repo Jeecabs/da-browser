@@ -63,11 +63,14 @@ export function prepareBrowserInput(spec: BrowserToolSpec, args: unknown): Input
 
 export const BROWSER_GUIDELINES = [
   "Element refs (@eN) come from snapshots. Elements that survive a same-document update keep their refs; a replaced element or a navigation invalidates them. Re-snapshot after navigation, or when an action on a ref fails.",
+  "A snapshot adds hint=\"...\" after the ref of a control with no name, or with the same name as another: its icon, image file, data-testid, name or id, and the text of its row (in:). Read the hint to pick the right ref among identical buttons instead of taking a screenshot.",
   "Prefer browser_find when the target has a role, label, text, placeholder, alt, title or testid; it saves a snapshot round-trip. It always performs its action; to look without acting, use browser_snapshot or browser_get.",
   "After browser_open, browser_nav or a submission the page is mid-load. Rely on waitMode networkidle (the default), or follow up with browser_wait on text, urlPattern, load or fn rather than plain milliseconds.",
   "This is the user's own signed-in browser: never perform mutations the user did not ask for.",
   "For quick churn that needs no login, such as checking local dev pages or public sites, browser_connect engine=obscura switches to a light headless browser that is signed out. browser_connect without engine switches back to the user's browser.",
-  "On Obscura, a click, hover or browser_find action by @ref fails on most text links (agent-browser #2070), so click by CSS selector with browser_command [\"click\", \"<selector>\"] or open the link's URL. Typing into a React textarea crashes the page, and client-side navigation can leave it blank, so switch back to the user's browser for forms and reload with browser_open after a blank page.",
+  "On Obscura, typing into a React textarea crashes the page, and client-side navigation can leave it blank, so switch back to the user's browser for forms and reload with browser_open after a blank page. If a click by @ref fails there, click by CSS selector with browser_command [\"click\", \"<selector>\"] or open the link's URL.",
+  "A click fails, rather than reporting success, when its element is hidden or disabled. Read the reason: wait for the element with browser_wait or browser_is, or act on the control that enables it.",
+  "On outcome_unknown the action may already have run: check the page with browser_snapshot or browser_get before repeating it. On page_wedged the tab stopped responding: continue in a new tab with browser_tab new.",
   "On tab_gone, strict isolation worked: the pinned tab closed and no other tab was adopted. Recover explicitly with browser_tab new, browser_tab list then switch by targetId, or browser_connect; do not retry blindly.",
 ];
 
@@ -144,7 +147,7 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
     readOnly: true,
     label: "Browser Snapshot",
     description:
-      "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs, and set delta=true when re-snapshotting the same page to get only the changes.",
+      "Capture a page snapshot, defaulting to interactive elements only. Scope with selector or depth on heavy SPAs, and set delta=true when re-snapshotting the same page to get only the changes. Controls with no name or a shared name carry a hint=\"...\" (icon, image, data-testid/name/id, nearest row) that tells them apart.",
     promptSnippet: "Inspect the current page and collect fresh element refs before clicking or filling",
     parameters: {
       type: "object",
@@ -483,7 +486,10 @@ export const BROWSER_TOOLS: BrowserToolSpec[] = [
       properties: {
         action: { type: "string", enum: ["list", "new", "close", "switch"] },
         url: { type: "string", description: "URL to open when action is 'new'" },
-        label: { type: "string", description: "Memorable label for the new tab (action 'new'), e.g. docs" },
+        label: {
+          type: "string",
+          description: "Memorable label for the new tab (action 'new'), e.g. docs: a letter first, then letters, digits, - or _",
+        },
         tab: { type: "string", description: "Tab id like t2, label, or durable CDP targetId for 'switch' (required) and 'close' (optional)" },
       },
       required: ["action"],

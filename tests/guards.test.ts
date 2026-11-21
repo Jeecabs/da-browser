@@ -68,10 +68,12 @@ test("agent-browser version checks accept the minimum and newer releases", () =>
   assert.equal(extractAgentBrowserVersion("unexpected output"), undefined);
 
   assert.equal(supportsAgentBrowserVersion("0.34.0"), false);
-  assert.equal(supportsAgentBrowserVersion("0.38.2"), false);
-  assert.equal(supportsAgentBrowserVersion("0.39.0-beta.1"), false);
-  assert.equal(supportsAgentBrowserVersion("0.39.0"), true);
-  assert.equal(supportsAgentBrowserVersion("0.40.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.39.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.42.0"), false);
+  assert.equal(supportsAgentBrowserVersion("0.43.0-beta.1"), false);
+  assert.equal(supportsAgentBrowserVersion("0.43.0"), true);
+  assert.equal(supportsAgentBrowserVersion("0.43.1"), true);
+  assert.equal(supportsAgentBrowserVersion("0.44.0"), true);
   assert.equal(supportsAgentBrowserVersion("1.0.0"), true);
   assert.equal(supportsAgentBrowserVersion("not-semver"), false);
 });
@@ -148,6 +150,10 @@ test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => 
     "cd /tmp && agent-browser --cdp 9222 get url",
     "echo $(agent-browser --cdp 9222 get title)",
     "ls\nagent-browser --session x --cdp 9222 tab list",
+    // 0.41 `mcp call` runs one MCP tool from a shell; the connect tool attaches like `connect`.
+    `agent-browser mcp call agent_browser_connect '{"target":"9222"}'`,
+    `agent-browser mcp call agent_browser_open '{"url":"https://x.test","extraArgs":["--cdp","9222"]}'`,
+    "agent-browser --cdp 9222 --cdp-headers '{}' get url",
   ]) {
     assert.equal(attachesAgentBrowserOverCdp(command), true, command);
   }
@@ -155,6 +161,8 @@ test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => 
     "agent-browser --version",
     "agent-browser --namespace da-browser session list",
     "agent-browser open example.com",
+    "agent-browser mcp call agent_browser_snapshot '{}'",
+    "agent-browser flow list",
     'git commit -m "refuse agent-browser --cdp from Bash"',
     "gh pr create --body 'agent-browser connect is refused'",
   ]) {
@@ -353,6 +361,18 @@ test("buildTabArgs uses stable string tab ids and labels", () => {
   );
 });
 
+
+test("buildTabArgs applies agent-browser's label rule before the CLI does", () => {
+  assert.deepEqual(buildTabArgs({ action: "new", label: " docs-2_a ", url: "https://x.test" }), [
+    "tab", "new", "--label", "docs-2_a", "https://x.test",
+  ]);
+  for (const label of ["9bad", "my docs", "docs!", "-docs", "t2", "T14", "dócs"]) {
+    assert.throws(() => buildTabArgs({ action: "new", label }), /browser_tab label .* is not valid/, label);
+  }
+  // A label that only looks like a tab id at a glance is fine.
+  assert.deepEqual(buildTabArgs({ action: "new", label: "tab2" }), ["tab", "new", "--label", "tab2"]);
+  assert.deepEqual(buildTabArgs({ action: "new", label: "  " }), ["tab", "new"]);
+});
 
 test("normalizeTabRef coerces bare integers to stable t-ids", () => {
   assert.equal(normalizeTabRef("2"), "t2");
@@ -740,6 +760,58 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
   assert.ok(bindingErrorStatus.split("\n").some((line) => line.startsWith("  bind err")));
 });
 
+
+// Messages are agent-browser 0.43.0's own, captured from a local probe or its source.
+test("classifyCdpError names agent-browser's own stop codes before any generic pattern", () => {
+  const wedged = JSON.stringify({
+    success: false,
+    code: "page_wedged",
+    data: { targetId: "TARGET-A", replaced: false, lastUrl: "https://example.com/" },
+    error: "page_wedged: the active tab (https://example.com/) stopped responding; close it or switch tabs to continue",
+  });
+  assert.equal(classifyCdpError(wedged), "page-wedged");
+  assert.equal(
+    classifyCdpError("✗ page_wedged: the active tab stopped responding and was replaced by a blank tab; navigate again to continue"),
+    "page-wedged",
+  );
+
+  // The socket error inside an outcome_unknown must not send it down the retry path.
+  const unknownOutcome = JSON.stringify({
+    success: false,
+    code: "outcome_unknown",
+    error:
+      "Failed to read response: websocket connection closed (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)",
+  });
+  assert.equal(classifyCdpError(unknownOutcome), "outcome-unknown");
+  assert.equal(classifyCdpError("✗ Read timed out (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)"), "outcome-unknown");
+
+  assert.equal(
+    classifyCdpError(
+      JSON.stringify({ success: false, data: null, error: "tab_locked: tab TARGET-A is pinned by session 'pi-a' (--pin-tab); close that session or use another tab" }),
+    ),
+    "tab-locked",
+  );
+
+  // 0.43: a tab that closes under a command fails at once instead of at the timeout.
+  assert.equal(classifyCdpError("✗ Target closed: CDP session 6F2A detached"), "target-gone");
+  // A strict pin stop still wins over everything else in the same output.
+  assert.equal(classifyCdpError(`tab_gone: bound tab is gone\n${wedged}`), "tab-gone");
+
+  // A first command's settings notice, CVE warning and lifecycle block are not failures.
+  assert.equal(
+    classifyCdpError(
+      [
+        "⚠ allowed-domains: default →  (--allowed-domains), relaunched browser",
+        '{"success":false,"data":{"lifecycle":{"launched":true,"relaunchedBrowser":false,"restoreStatus":"not_configured","saveStatus":"not_attempted"}},"error":"Element \'@e7\' is disabled, so the click would not reach it","warning":"Chrome 157.0.8103.79 is behind the current stable release 158.0.8127.36, which fixes 204 CVEs (CVE-2026-121101, +203 more). Update the browser; for agent-browser\'s Chrome, run `agent-browser install`."}',
+      ].join("\n"),
+    ),
+    "unknown",
+  );
+
+  assert.match(friendlyCdpMessage("page-wedged", 9222, "raw wedge"), /stopped responding[\s\S]*browser_tab action='new'[\s\S]*raw wedge/);
+  assert.match(friendlyCdpMessage("outcome-unknown", 9222, "raw outcome"), /may or may not have run[\s\S]*Check the page first[\s\S]*raw outcome/);
+  assert.match(friendlyCdpMessage("tab-locked", 9222, "raw lock"), /pinned by another agent session[\s\S]*raw lock/);
+});
 
 test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { pressBrowserKey } from "../src/agent-browser.ts";
+import { friendlyCdpMessage } from "../src/cdp-errors.ts";
 import type { BrowserHost } from "../src/host.ts";
 import { connectionHealth, createBrowserState } from "../src/state.ts";
 import {
@@ -167,6 +168,21 @@ describe("snapshotLabel", () => {
         assert.equal(snapshotLabel(snapshot, "@e3"), "textbox");
         assert.equal(snapshotLabel(snapshot, "@e99"), undefined);
         assert.equal(snapshotLabel(snapshot, "@e1]"), undefined);
+    });
+
+    // Lines are agent-browser 0.43.0 output from a local probe page.
+    it("names an unnamed control by its snapshot hint", () => {
+        const snapshot = [
+            '- button "Delete" [ref=e9] hint="data-testid:del-alpha; in:Alpha row"',
+            '- button [ref=e5] hint="icon:icon-gear; data-testid:settings-btn"',
+            '- button [ref=e6] hint="img:trash; id:img1"',
+            '- button "Disabled one" [disabled, ref=e7]',
+        ].join("\n");
+        assert.equal(snapshotLabel(snapshot, "e5"), "button (icon:icon-gear)");
+        assert.equal(snapshotLabel(snapshot, "e6"), "button (img:trash)");
+        assert.equal(snapshotLabel(snapshot, "e9"), '"Delete"');
+        assert.equal(snapshotLabel(snapshot, "e7"), '"Disabled one"');
+        assert.deepEqual(snapshotChanges("", snapshot).added, ['button "Delete"', "button", "button", 'button "Disabled one"']);
     });
 });
 
@@ -402,11 +418,27 @@ describe("fixes from a real-browser run", () => {
         assert.deepEqual(explainFailure(text), { reason: "Unknown ref: e99", hint: "refs go stale when the page changes; take a new snapshot" });
     });
 
+    it("explains agent-browser's stop codes in a few words", () => {
+        const details = "agent-browser: x\nCommand failed: agent-browser click @e1\nExit code: 1\nstderr:\n✗ x";
+        assert.deepEqual(explainFailure(friendlyCdpMessage("tab-locked", 9222, details)), {
+            reason: "tab belongs to another session",
+            hint: "pick another tab, or open a new one",
+        });
+        assert.deepEqual(explainFailure(friendlyCdpMessage("page-wedged", 9222, details)), {
+            reason: "tab stopped responding",
+            hint: "continue in a new tab and close the stuck one",
+        });
+        assert.deepEqual(explainFailure(friendlyCdpMessage("outcome-unknown", 9222, details)), {
+            reason: "no answer from the browser",
+            hint: "the action may have run; check the page before repeating it",
+        });
+    });
+
     it("explains --json CLI failures by the error on stdout, keeping the details", async () => {
         const envelope = '{"success":false,"data":null,"error":"No recording in progress"}';
         const host = {
             exec: async (_command: string, args: string[]) =>
-                args[0] === "--version" ? { stdout: "agent-browser 0.39.0", stderr: "", code: 0 } : { stdout: envelope, stderr: "", code: 1 },
+                args[0] === "--version" ? { stdout: "agent-browser 0.43.0", stderr: "", code: 0 } : { stdout: envelope, stderr: "", code: 1 },
             ensureDir: async () => {},
             sessionId: "s",
             sessionPrefix: "pi",

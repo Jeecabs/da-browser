@@ -86,13 +86,20 @@ Reload pi if already running:
 
 ## Operational notes
 
+- da-browser needs agent-browser 0.43.0 or newer (and so Node 22). [agent-browser-v0.43.0.md](agent-browser-v0.43.0.md) lists what changed since 0.39 and how each change is handled; [agent-browser-v0.34.0.md](agent-browser-v0.34.0.md) explains strict tab pinning.
 - Browser refs (`@e12`) come from snapshots and survive same-document updates for elements that stay; a replaced element or a navigation invalidates them.
+- A snapshot adds `hint="…"` after the ref of a control with no accessible name, or with the same name as another: its icon, image file, `data-testid`, `name` or `id`, and the text of its row (`in:`). Use it to tell identical buttons apart; a `data-testid` from a hint works with `browser_find locator=testid`.
+- A click on a hidden or disabled element fails with the reason instead of reporting success. A ref below the fold is scrolled into view first.
 - `browser_find` always acts. Use `browser_snapshot`/`browser_get` to inspect without mutation.
 - `/browser status` and `browser_status` actively probe the port and any previously known pinned binding. They report the daemon session, binding state, durable targetId, and sanitized tab-gone URL when available.
 - CDP actions use a dedicated, Pi-session-derived daemon session, enable strict `--pin-tab`, and explicitly clear `AGENT_BROWSER_ALLOWED_DOMAINS`. agent-browser cannot install domain/WebRTC containment on pre-existing browser pages. Explicit-URL `browser_read` calls still support `allowedDomains`.
 - The controlled tab binding survives daemon restarts. Other Pi sessions and user-opened tabs cannot steal the active target.
+- Three other stops are reported by name and never retried. `outcome_unknown`: the command reached the daemon and no answer came back, so check the page before repeating it. `page_wedged`: the tab stopped responding, so continue in a new one. `tab_locked`: `browser_tab` named a tab pinned by another session.
 - If the pinned tab disappears, commands fail safely with `tab_gone` and retain its `targetId` plus sanitized last URL when available. Recover with `browser_tab` new/switch, or use `browser_connect` as an explicit request for a fresh controlled tab. Only transient non-pin target failures retry automatically.
-- `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` (or `contactSheetThreshold`) also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video. `url` navigates first and starts once the page loads, to film a cold load.
+- A new tab's `label` starts with a letter and holds only letters, digits, `-` and `_`.
+- agent-browser prints its own notices on stderr (the settings a daemon started with, an outdated-Chrome warning). They are kept out of tool results; `browser_command` shows them, and "relaunched browser" there means the daemon attached again, not that the browser restarted.
+- Through `browser_command`: saved flows (`["--capture", "flow", "get", "url"]`, then `["flow", "steps"]`, `["flow", "save", "<name>"]`, `["flow", "run", "<name>"]`; experimental, and da-browser's own bookkeeping is recorded as steps), `["cookies", "set", "<name>", "<value>", "--http-only", "--same-site", "Lax"]`, `["network", "route", "<url>", "--body", "<json>", "--allow-origin", "<origin>"]`, and `["batch", "--json", "--omit-command", …]`.
+- `browser_record` defaults to 30 fps. `cursor=true` draws the pointer and click ripples into the video; `contactSheet=true` (or `contactSheetThreshold`) also writes `<name>.contact-sheet.png`, a change-selected summary that is far cheaper to inspect than the video. `url` navigates first and starts once the page loads, to film a cold load. With an emulated device scale (`browser_set viewport` with `scale` 2) the take is filmed from full-density screenshots, which can drop frames on a busy page, and stop says so.
 - A recording films the controlled tab in place. Chrome does not paint a background tab, so start brings a hidden tab to the front, and stop warns when the tab never painted (a minimised or covered window) or was hidden when the take ended. A tab hidden mid-take and shown again before stop goes unwarned. Navigation in the tab is followed; `browser_tab` new/switch is not, so `restart` to film the new tab.
 - A daemon that exits mid-take truncates the video. Each host stops a running recording, HAR or trace when its session ends, and `/browser cleanup` stops them first. A take left idle for an hour is still lost with its daemon, and status then reports it.
 - Repeated `browser_checkpoint` calls with `ifChanged=true` and `browser_snapshot` with `delta=true` return nothing when the page has not moved, so polling a page costs almost no context. `ifChanged` tolerates up to 1% pixel change by default; pass `threshold` to widen or tighten it.
@@ -119,13 +126,13 @@ pnpm test:e2e  # launches an isolated browser and verifies strict shared-CDP pin
 
 ## Obscura limits
 
-Tested with Obscura 0.2.4 and agent-browser 0.39.0 against skimate.ai (a Next.js app), with headless Chrome as the baseline.
+Tested with Obscura 0.2.4 and agent-browser 0.39.0 against skimate.ai (a Next.js app), with headless Chrome as the baseline. Not re-run on 0.43.0.
 
 These work as in Chrome: opening pages, snapshots (including `selector`, `delta` and annotated checkpoints), screenshots (full page, element and mobile viewport), `browser_eval`, `browser_read` of the tab, waits on text, URL and network idle, history and `pushstate`, extra tabs, viewport, device, colour scheme and geolocation, console and network logs, HAR capture, cookie export, axe audits, and plain HTML forms (fill, type, select, check, and clicks by CSS selector).
 
 | Area | What happens | Workaround |
 | --- | --- | --- |
-| Clicks by ref | `browser_click`, `browser_find` and hover by `@ref` fail with a `DOM.getBoxModel` float error when the element's box has a fractional size, which most text links have ([agent-browser#2070](https://github.com/vercel-labs/agent-browser/issues/2070)) | `browser_command ["click", "<css selector>"]`, or `browser_open` the link's URL |
+| Clicks by ref | On 0.39.0, `browser_click`, `browser_find` and hover by `@ref` failed with a `DOM.getBoxModel` float error when the element's box had a fractional size, which most text links have. agent-browser 0.42.0 fixed it ([#2070](https://github.com/vercel-labs/agent-browser/issues/2070), [#2393](https://github.com/vercel-labs/agent-browser/pull/2393)); not re-tested here | If one still fails: `browser_command ["click", "<css selector>"]`, or `browser_open` the link's URL |
 | React textareas | `HTMLTextAreaElement.prototype` has no `value` property, so typing or filling a React-controlled textarea crashes the app into its error boundary | Use the user's browser for forms |
 | Client-side navigation | Some routes render an empty `main` after an in-app link click (Powder chase did every time; Trending did not) | `browser_open` the URL directly |
 | Rendering | No WebGL, so pages that need it throw: skimate.ai's resort globe fell into its error state. Web fonts never load, and button labels can wrap | Use the user's browser for visual QA or WebGL pages |

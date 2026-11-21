@@ -1,5 +1,7 @@
 # agent-browser 0.34.0 deep dive
 
+> Kept as the reference for strict tab pinning, which every later version still relies on. The minimum is now 0.43.0: see [agent-browser-v0.43.0.md](agent-browser-v0.43.0.md) for what changed since, including `get cdp-url` no longer attaching a new session (the "pin before attach" probe is now `get url`) and the `tab_locked` stop.
+
 ## Decision
 
 da-browser now requires agent-browser **0.34.0** and enables strict `--pin-tab` on every CDP-backed invocation. This release directly fixes da-browser's highest-risk shared-Chrome failure mode: one Pi session silently adopting or navigating another session's tab.

@@ -82,6 +82,28 @@ test("a stop warns when the video is one still frame", async () => {
   assert.match(froze.summary, /in the background when the take ended/);
 });
 
+test("a stop says when an emulated device scale switched the take to screenshots", async () => {
+  // agent-browser 0.43.0 `record stop --json` after `set viewport 800 600 2`.
+  const host = fakeHost((args) =>
+    has(args, "record", "stop")
+      ? envelope({ capture: "screenshots", capturedFrames: 15, deviceScaleFactor: 2.0, fps: 10, frames: 17, path: "/tmp/take.webm" })
+      : undefined,
+  );
+  const result = await recordBrowser(host, recordingState({ recording: { file: "/tmp/take.webm", startedAt: Date.now() } }), { action: "stop" });
+  const diagnostics = result.diagnostics as Record<string, unknown>;
+  assert.equal(diagnostics.capture, "screenshots");
+  assert.equal(diagnostics.deviceScaleFactor, 2);
+  assert.equal(diagnostics.stillFrame, false);
+  assert.match(result.summary, /Filmed from screenshots at device scale 2/);
+
+  const screencast = fakeHost((args) =>
+    has(args, "record", "stop") ? envelope({ capturedFrames: 2, fps: 10, frames: 12, path: "/tmp/take.webm" }) : undefined,
+  );
+  const plain = await recordBrowser(screencast, recordingState({ recording: { file: "/tmp/take.webm", startedAt: Date.now() } }), { action: "stop" });
+  assert.equal((plain.diagnostics as Record<string, unknown>).capture, "screencast");
+  assert.doesNotMatch(plain.summary, /screenshots/);
+});
+
 test("start brings a hidden controlled tab to the front, by its targetId", async () => {
   let visibility = "hidden";
   const host = fakeHost((args) => {

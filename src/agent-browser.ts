@@ -257,7 +257,7 @@ async function connectObscura(host: BrowserHost, state: BrowserState): Promise<B
   return {
     summary: [
       "Connected to a headless Obscura browser: light, but signed out (no cookies, logins or extensions) and not yet at Chrome parity.",
-      "Local dev URLs are allowed. @ref clicks fail on most text links (agent-browser #2070), so click by CSS selector through browser_command or open links by URL. React textareas crash when typed into.",
+      "Local dev URLs are allowed. React textareas crash when typed into, and client-side navigation can leave a page blank; if a click by @ref fails, click by CSS selector through browser_command or open the link by URL.",
       "Run browser_connect without engine to return to the user's browser.",
     ].join("\n"),
     diagnostics: {
@@ -1288,6 +1288,9 @@ export async function recordBrowser(
     // Chrome does not paint a hidden tab, so its screencast holds one frame for the take.
     const fps = typeof data.fps === "number" ? data.fps : 30;
     const stillFrame = typeof data.capturedFrames === "number" && data.capturedFrames <= 1 && typeof data.frames === "number" && data.frames > fps;
+    // With an emulated device scale (browser_set viewport scale), agent-browser 0.43 films
+    // full-density screenshots instead of the screencast, which can drop frames on busy pages.
+    const screenshotCapture = data.capture === "screenshots";
     return {
       summary: [
         file ? `Stopped recording → ${file}` : "Stopped recording.",
@@ -1296,6 +1299,9 @@ export async function recordBrowser(
           : hiddenAtStop
             ? "Warning: the tab was in the background when the take ended, so the video froze from when it was hidden."
             : "",
+        screenshotCapture
+          ? `Filmed from screenshots at device scale ${typeof data.deviceScaleFactor === "number" ? data.deviceScaleFactor : "above 1"}, which is sharper but can capture fewer frames on a busy page. Reset the viewport scale to 1 for a smoother take.`
+          : "",
       ].filter(Boolean).join("\n"),
       artifacts: [file, sheet].filter((entry): entry is string => Boolean(entry)),
       diagnostics: {
@@ -1306,6 +1312,8 @@ export async function recordBrowser(
         capturedFrames: data.capturedFrames,
         fps: data.fps,
         contactSheetFrames: data.contactSheetFrames,
+        capture: screenshotCapture ? "screenshots" : "screencast",
+        deviceScaleFactor: data.deviceScaleFactor,
         stillFrame,
         hiddenAtStop,
         durationMs: previous ? Date.now() - previous.startedAt : undefined,

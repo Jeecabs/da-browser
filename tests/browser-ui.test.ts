@@ -169,6 +169,21 @@ describe("snapshotLabel", () => {
         assert.equal(snapshotLabel(snapshot, "@e99"), undefined);
         assert.equal(snapshotLabel(snapshot, "@e1]"), undefined);
     });
+
+    // Lines are agent-browser 0.43.0 output from a local probe page.
+    it("names an unnamed control by its snapshot hint", () => {
+        const snapshot = [
+            '- button "Delete" [ref=e9] hint="data-testid:del-alpha; in:Alpha row"',
+            '- button [ref=e5] hint="icon:icon-gear; data-testid:settings-btn"',
+            '- button [ref=e6] hint="img:trash; id:img1"',
+            '- button "Disabled one" [disabled, ref=e7]',
+        ].join("\n");
+        assert.equal(snapshotLabel(snapshot, "e5"), "button (icon:icon-gear)");
+        assert.equal(snapshotLabel(snapshot, "e6"), "button (img:trash)");
+        assert.equal(snapshotLabel(snapshot, "e9"), '"Delete"');
+        assert.equal(snapshotLabel(snapshot, "e7"), '"Disabled one"');
+        assert.deepEqual(snapshotChanges("", snapshot).added, ['button "Delete"', "button", "button", 'button "Disabled one"']);
+    });
 });
 
 describe("formatAddress", () => {

@@ -86,7 +86,8 @@ export function joined(...parts: string[]): string {
 
 /**
  * Finds what a ref points at in an agent-browser snapshot (`- button "Merge" [ref=e12]`),
- * so a click reads `click "Merge"` instead of `click @e12`.
+ * so a click reads `click "Merge"` instead of `click @e12`, or `click button (icon:gear)`
+ * for a control with no name.
  */
 export function snapshotLabel(snapshot: string, ref: string): string | undefined {
   const id = ref.trim().replace(/^@+/, "");
@@ -97,7 +98,10 @@ export function snapshotLabel(snapshot: string, ref: string): string | undefined
   const match = line?.match(/^\s*-\s*([\w-]+)(?:\s+"((?:[^"\\]|\\.)*)")?/);
   if (!match) return undefined;
   const label = match[2]?.replace(/\\(.)/g, "$1").trim();
-  return label ? `"${clip(label, MAX_QUOTE)}"` : match[1];
+  if (label) return `"${clip(label, MAX_QUOTE)}"`;
+  // agent-browser 0.43 describes an unnamed control after its ref: `hint="icon:gear; id:x"`.
+  const hint = line?.match(/\]\s+hint="((?:[^"\\]|\\.)*)"/)?.[1]?.split(";")[0]?.trim();
+  return hint ? `${match[1]} (${clip(hint, MAX_QUOTE)})` : match[1];
 }
 
 /**

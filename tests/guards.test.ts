@@ -150,6 +150,10 @@ test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => 
     "cd /tmp && agent-browser --cdp 9222 get url",
     "echo $(agent-browser --cdp 9222 get title)",
     "ls\nagent-browser --session x --cdp 9222 tab list",
+    // 0.41 `mcp call` runs one MCP tool from a shell; the connect tool attaches like `connect`.
+    `agent-browser mcp call agent_browser_connect '{"target":"9222"}'`,
+    `agent-browser mcp call agent_browser_open '{"url":"https://x.test","extraArgs":["--cdp","9222"]}'`,
+    "agent-browser --cdp 9222 --cdp-headers '{}' get url",
   ]) {
     assert.equal(attachesAgentBrowserOverCdp(command), true, command);
   }
@@ -157,6 +161,8 @@ test("the Bash guard refuses agent-browser over CDP, not mentions of it", () => 
     "agent-browser --version",
     "agent-browser --namespace da-browser session list",
     "agent-browser open example.com",
+    "agent-browser mcp call agent_browser_snapshot '{}'",
+    "agent-browser flow list",
     'git commit -m "refuse agent-browser --cdp from Bash"',
     "gh pr create --body 'agent-browser connect is refused'",
   ]) {
@@ -355,6 +361,18 @@ test("buildTabArgs uses stable string tab ids and labels", () => {
   );
 });
 
+
+test("buildTabArgs applies agent-browser's label rule before the CLI does", () => {
+  assert.deepEqual(buildTabArgs({ action: "new", label: " docs-2_a ", url: "https://x.test" }), [
+    "tab", "new", "--label", "docs-2_a", "https://x.test",
+  ]);
+  for (const label of ["9bad", "my docs", "docs!", "-docs", "t2", "T14", "dócs"]) {
+    assert.throws(() => buildTabArgs({ action: "new", label }), /browser_tab label .* is not valid/, label);
+  }
+  // A label that only looks like a tab id at a glance is fine.
+  assert.deepEqual(buildTabArgs({ action: "new", label: "tab2" }), ["tab", "new", "--label", "tab2"]);
+  assert.deepEqual(buildTabArgs({ action: "new", label: "  " }), ["tab", "new"]);
+});
 
 test("normalizeTabRef coerces bare integers to stable t-ids", () => {
   assert.equal(normalizeTabRef("2"), "t2");

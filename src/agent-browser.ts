@@ -52,9 +52,12 @@ import {
   formatGetResult,
   formatTabTable,
   isPlainObject,
+  joinCliOutput,
   normalizeTabList,
+  stripLifecycle,
   unwrapCliEnvelope,
   type BrowserGetWhat,
+  type CliOutputMode,
 } from "./agent-browser-output.ts";
 import {
   arcRelaunchCommand,
@@ -189,14 +192,12 @@ export async function connectBrowser(
   // that inherits the user's full auth/cookie context.
   await ensurePageTarget(host, state.port);
 
-  // The daemon ignores --cdp once its session holds a connection, so a session pinned to
-  // an old browser would silently absorb every command. Detach it if it's on the wrong port.
-  await ensureDaemonOnPort(host, state.port);
-
   // Verify CDP connection works by fetching the current URL. This probe must fail hard:
-  // status only proves the port exists, not that agent-browser can attach to it. A prior
-  // pinned target may legitimately be gone; browser_connect is the explicit recovery action,
-  // so bind a fresh tab here rather than weakening the pin or adopting a neighboring tab.
+  // status only proves the port exists, not that agent-browser can attach to it. A daemon
+  // still attached to another port re-attaches here by itself (agent-browser 0.42+), and its
+  // old target is not in this browser. A prior pinned target may legitimately be gone too;
+  // browser_connect is the explicit recovery action, so bind a fresh tab here rather than
+  // weakening the pin or adopting a neighboring tab.
   let recoveredPinnedTab = false;
   try {
     await refreshCurrentUrl(host, state, false);
@@ -792,7 +793,8 @@ export async function runBrowserCommand(
   await ensureReady(host, state);
   const safeArgs = normalizeBrowserCommandArgs(args);
   const timeout = Math.min(Math.max(timeoutMs ?? 60_000, 1_000), 300_000);
-  const output = await runAgentBrowser(host, safeArgs, timeout, { target: state });
+  // The passthrough shows the CLI as it is, settings notices included.
+  const output = await runAgentBrowser(host, safeArgs, timeout, { target: state, output: "raw" });
   await refreshCurrentUrl(host, state);
   await markControlledTab(host, state);
   const formatted = await formatToolText(host, output || "(no output)", {
@@ -1369,7 +1371,11 @@ async function bringControlledTabForward(host: BrowserHost, state: BrowserState)
 
 /** Whether the controlled tab is in the background, where Chrome does not paint it. */
 async function controlledTabHidden(host: BrowserHost, state: BrowserState): Promise<boolean> {
-  const visibility = await runAgentBrowser(host, ["eval", "document.visibilityState"], 10_000, { target: state, allowFailure: true });
+  const visibility = await runAgentBrowser(host, ["eval", "document.visibilityState"], 10_000, {
+    target: state,
+    allowFailure: true,
+    output: "stdout",
+  });
   return visibility.includes("hidden");
 }
 
@@ -1542,7 +1548,7 @@ async function probeAgentBrowserVersion(
     const result = (await host.exec("agent-browser", ["--version"], {
       timeout: 5_000,
     })) as CommandResult;
-    if (result.code === 0) installed = extractAgentBrowserVersion(joinAgentBrowserOutput(result));
+    if (result.code === 0) installed = extractAgentBrowserVersion(joinCliOutput(result.stdout, result.stderr, "raw"));
   } catch {
     // Status must remain usable when the executable is missing or cannot spawn.
   }
@@ -1588,34 +1594,6 @@ async function tryEnsureTarget(host: BrowserHost, port: number): Promise<boolean
   } catch {
     return false;
   }
-}
-
-/**
- * The daemon binds one browser connection per session and silently ignores --cdp once
- * connected (verified on 0.27.0 — commands run against the old browser even when the flag
- * names a dead port). Compare the session's live CDP endpoint against the expected port
- * and detach (`close` disconnects the session without quitting Arc) so the next command
- * re-attaches to the right browser. Best-effort: verification failures don't block connect.
- */
-async function ensureDaemonOnPort(host: BrowserHost, port: number): Promise<void> {
-  let cdpUrl: string | undefined;
-  try {
-    const data = await runAgentBrowserJSON(host, ["get", "cdp-url"], 10_000, { target: { port } });
-    if (isPlainObject(data) && typeof data.cdpUrl === "string") cdpUrl = data.cdpUrl;
-  } catch {
-    return; // no live session yet — the next command attaches fresh to the right port
-  }
-  if (!cdpUrl) return;
-
-  let connectedPort: number | undefined;
-  try {
-    connectedPort = Number(new URL(cdpUrl).port) || undefined;
-  } catch {
-    return;
-  }
-  if (connectedPort === undefined || connectedPort === port) return;
-
-  await runAgentBrowser(host, ["close"], 15_000, { target: { port }, allowFailure: true });
 }
 
 async function fetchTargets(host: BrowserHost, port: number): Promise<CdpTarget[]> {
@@ -1800,7 +1778,8 @@ async function refreshCurrentUrl(
   state: BrowserState,
   allowFailure = true,
 ): Promise<void> {
-  const result = await runAgentBrowser(host, ["get", "url"], 10_000, { target: state, allowFailure });
+  // Often the first command a new daemon runs, which prints its attach notices on stderr.
+  const result = await runAgentBrowser(host, ["get", "url"], 10_000, { target: state, allowFailure, output: "stdout" });
   const url = result.trim();
   state.currentUrl = url || undefined;
   state.currentDomain = domainFromUrl(url);
@@ -1838,9 +1817,10 @@ async function runAgentBrowser(
   host: BrowserHost,
   args: string[],
   timeout: number,
-  options: { allowFailure?: boolean; target?: BrowserTarget; local?: boolean } = {},
+  options: { allowFailure?: boolean; target?: BrowserTarget; local?: boolean; output?: CliOutputMode } = {},
 ): Promise<string> {
   const target = options.target;
+  const output = options.output ?? "filtered";
   const obscura = target?.engine === "obscura";
   let fullArgs = !target
     ? args
@@ -1868,7 +1848,7 @@ async function runAgentBrowser(
       : host.exec("agent-browser", fullArgs, { timeout: effectiveTimeout })) as Promise<CommandResult>;
 
   let result = await exec();
-  if (result.code === 0) return joinAgentBrowserOutput(result);
+  if (result.code === 0) return joinCliOutput(result.stdout, result.stderr, output);
 
   // Best-effort calls (banner injection, url refresh) never heal/retry or throw — a
   // cosmetic miss must not become a hard failure.
@@ -1884,7 +1864,7 @@ async function runAgentBrowser(
     const healed = await tryEnsureTarget(host, target.port);
     if (healed) {
       result = await exec();
-      if (result.code === 0) return joinAgentBrowserOutput(result);
+      if (result.code === 0) return joinCliOutput(result.stdout, result.stderr, output);
       failureText = combineStreams(result);
       kind = classifyCdpError(failureText);
     }
@@ -1905,10 +1885,6 @@ async function runAgentBrowser(
 
 function combineStreams(result: CommandResult): string {
   return `${result.stderr ?? ""}\n${result.stdout ?? ""}`;
-}
-
-function joinAgentBrowserOutput(result: CommandResult): string {
-  return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
 }
 
 function readPayloadContent(payload: unknown): string {
@@ -1936,14 +1912,16 @@ async function runAgentBrowserJSON(
   options: { target?: BrowserTarget; local?: boolean } = {},
 ): Promise<unknown> {
   const argsWithJson = args.includes("--json") ? args : [...args, "--json"];
-  const output = await runAgentBrowser(host, argsWithJson, timeout, options);
+  // stdout alone: a daemon's first command also prints settings notices on stderr, even
+  // with --json, and they would end up after the envelope.
+  const output = await runAgentBrowser(host, argsWithJson, timeout, { ...options, output: "stdout" });
   if (!output) return undefined;
 
   const jsonStart = findJsonStart(output);
   const candidate = jsonStart >= 0 ? output.slice(jsonStart) : output;
 
   try {
-    return unwrapCliEnvelope(JSON.parse(candidate));
+    return stripLifecycle(unwrapCliEnvelope(JSON.parse(candidate)));
   } catch (error) {
     if (error instanceof AgentBrowserCliError) throw error;
     const reason = error instanceof Error ? error.message : String(error);

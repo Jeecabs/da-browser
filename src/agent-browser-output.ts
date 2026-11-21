@@ -28,6 +28,50 @@ export function unwrapCliEnvelope(parsed: unknown): unknown {
   return parsed;
 }
 
+/**
+ * Every `--json` payload carries a `lifecycle` block (launch state and, on a daemon's first
+ * command, its settings changes). It describes the daemon, not the page, so it is dropped
+ * before a payload is shown or its remaining keys are counted.
+ */
+export function stripLifecycle(data: unknown): unknown {
+  if (!isPlainObject(data) || !("lifecycle" in data)) return data;
+  const { lifecycle: _lifecycle, ...rest } = data;
+  return rest;
+}
+
+/**
+ * How much of a successful command's output to keep. `stdout` is for values that get
+ * parsed. `filtered` adds stderr warnings worth reading, such as an open dialog, without
+ * the daemon's own notices. `raw` is both streams untouched, for the passthrough.
+ */
+export type CliOutputMode = "stdout" | "filtered" | "raw";
+
+// What a daemon says about itself on stderr, mostly on its first command: the settings it
+// started with ("⚠ allowed-domains: default →  (--allowed-domains), relaunched browser"),
+// "[agent-browser] launched browser", and the outdated-Chrome CVE notice (0.41.2). None of
+// it is about the page, and "relaunched browser" on a CDP attach reads as a restart.
+const DAEMON_NOTICE_PATTERNS: RegExp[] = [
+  /^\[agent-browser\] /,
+  /^⚠ [\w-]+: .* → .*, (?:relaunched browser|applied)$/,
+  /^⚠ browser: relaunched \(--relaunch\)$/,
+  /^⚠ Chrome [\d.]+ is behind the current stable release /,
+];
+
+const ANSI_COLOR = /\x1b\[[0-9;]*m/g;
+
+export function isDaemonNotice(line: string): boolean {
+  const plain = line.replace(ANSI_COLOR, "").trim();
+  return DAEMON_NOTICE_PATTERNS.some((pattern) => pattern.test(plain));
+}
+
+export function joinCliOutput(stdout: string, stderr: string, mode: CliOutputMode = "filtered"): string {
+  if (mode === "stdout") return (stdout ?? "").trim();
+  const extra = mode === "raw"
+    ? stderr ?? ""
+    : (stderr ?? "").split("\n").filter((line) => line.trim() && !isDaemonNotice(line)).join("\n");
+  return [(stdout ?? "").trim(), extra.trim()].filter(Boolean).join("\n");
+}
+
 export type BrowserGetWhat =
   | "text"
   | "html"
@@ -60,9 +104,9 @@ export function extractGetResult(what: BrowserGetWhat, parsed: unknown): unknown
   const key = GET_RESULT_KEYS[what];
   if (key && key in parsed) return parsed[key];
 
-  // Payloads carry an `origin` field alongside the value; drop it and unwrap a lone
-  // remaining key so callers see the value, not the transport shape.
-  const entries = Object.entries(parsed).filter(([k]) => k !== "origin");
+  // Payloads carry `origin` and `lifecycle` fields alongside the value; drop them and unwrap
+  // a lone remaining key so callers see the value, not the transport shape.
+  const entries = Object.entries(parsed).filter(([k]) => k !== "origin" && k !== "lifecycle");
   if (entries.length === 0) return undefined;
   if (entries.length === 1) return entries[0]?.[1];
   return Object.fromEntries(entries);

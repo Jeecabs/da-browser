@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { pressBrowserKey } from "../src/agent-browser.ts";
+import { friendlyCdpMessage } from "../src/cdp-errors.ts";
 import type { BrowserHost } from "../src/host.ts";
 import { connectionHealth, createBrowserState } from "../src/state.ts";
 import {
@@ -400,6 +401,22 @@ describe("fixes from a real-browser run", () => {
     it("explains CLI failures by their stderr, not the command line", () => {
         const text = "Command failed: agent-browser --namespace da-browser --session pi-1 --pin-tab --cdp 9222 click @e99\nExit code: 1\nstderr:\n✗ Unknown ref: e99";
         assert.deepEqual(explainFailure(text), { reason: "Unknown ref: e99", hint: "refs go stale when the page changes; take a new snapshot" });
+    });
+
+    it("explains agent-browser's stop codes in a few words", () => {
+        const details = "agent-browser: x\nCommand failed: agent-browser click @e1\nExit code: 1\nstderr:\n✗ x";
+        assert.deepEqual(explainFailure(friendlyCdpMessage("tab-locked", 9222, details)), {
+            reason: "tab belongs to another session",
+            hint: "pick another tab, or open a new one",
+        });
+        assert.deepEqual(explainFailure(friendlyCdpMessage("page-wedged", 9222, details)), {
+            reason: "tab stopped responding",
+            hint: "continue in a new tab and close the stuck one",
+        });
+        assert.deepEqual(explainFailure(friendlyCdpMessage("outcome-unknown", 9222, details)), {
+            reason: "no answer from the browser",
+            hint: "the action may have run; check the page before repeating it",
+        });
     });
 
     it("explains --json CLI failures by the error on stdout, keeping the details", async () => {

@@ -7,7 +7,15 @@
 // too busy to respond. Classifying these lets callers self-heal the recoverable ones and
 // give the agent an actionable next step instead of a raw exec dump.
 
-export type CdpErrorKind = "browser-down" | "tab-gone" | "target-gone" | "page-busy" | "unknown";
+export type CdpErrorKind =
+  | "browser-down"
+  | "tab-gone"
+  | "tab-locked"
+  | "page-wedged"
+  | "outcome-unknown"
+  | "target-gone"
+  | "page-busy"
+  | "unknown";
 
 export interface TabGoneDetails {
   targetId?: string;
@@ -45,7 +53,20 @@ const BROWSER_DOWN_PATTERNS: RegExp[] = [
 // Usually recoverable by re-creating a page target and retrying once.
 const TAB_GONE_PATTERN = /tab_gone/i;
 
+// agent-browser 0.39.4: `tab <targetId>` named a tab another session holds with --pin-tab.
+const TAB_LOCKED_PATTERN = /\btab_locked\b/i;
+
+// agent-browser 0.39.4: the tab's renderer stopped answering. A tab in an attached browser
+// is left alone; a launched one (Obscura) is replaced by a blank tab after a second timeout.
+const PAGE_WEDGED_PATTERN = /\bpage_wedged\b/i;
+
+// agent-browser 0.39.1: a mutating command reached the daemon and no response came back, so
+// the CLI did not send it again. Its text often names a socket or timeout error as well.
+const OUTCOME_UNKNOWN_PATTERN = /\boutcome_unknown\b|may or may not have run/i;
+
 const TARGET_GONE_PATTERNS: RegExp[] = [
+  // Includes 0.43's `Target closed: CDP session <id> detached`, sent as soon as a tab closes
+  // under a command instead of after the command's timeout.
   /target (closed|crashed)/i,
   /no (such )?(page )?target/i,
   /no target with given id/i,
@@ -69,6 +90,11 @@ export function classifyCdpError(text: string): CdpErrorKind {
   // `tab_gone` is an intentional strict-pin safety stop, not a generic target loss. It
   // must never enter the automatic target-creation retry path below the wrapper.
   if (TAB_GONE_PATTERN.test(haystack)) return "tab-gone";
+  // These three name their own cause, and none may reach the retry below: a retry would
+  // repeat a command that may have run, or run it on a wedged tab's blank replacement.
+  if (OUTCOME_UNKNOWN_PATTERN.test(haystack)) return "outcome-unknown";
+  if (PAGE_WEDGED_PATTERN.test(haystack)) return "page-wedged";
+  if (TAB_LOCKED_PATTERN.test(haystack)) return "tab-locked";
   if (BROWSER_DOWN_PATTERNS.some((re) => re.test(haystack))) return "browser-down";
   if (TARGET_GONE_PATTERNS.some((re) => re.test(haystack))) return "target-gone";
   if (PAGE_BUSY_PATTERNS.some((re) => re.test(haystack))) return "page-busy";
@@ -169,6 +195,25 @@ export function friendlyCdpMessage(
         "Recover explicitly with browser_tab action='new' (optionally using the last URL), or browser_tab action='list' then switch using a targetId.",
         "browser_connect is also an explicit request to create a fresh controlled tab.",
       ].filter((line): line is string => Boolean(line)).join("\n");
+    case "tab-locked":
+      return [
+        "That tab is pinned by another agent session, so this session cannot switch to it or close it.",
+        "Pick a different tab from browser_tab action='list', or open one with browser_tab action='new'. This session's own tab is unchanged.",
+        rawDetails,
+      ].join("\n");
+    case "page-wedged":
+      return [
+        "The controlled tab stopped responding, so the command did not run.",
+        "In the user's browser agent-browser leaves a stuck tab alone: continue in a fresh one with browser_tab action='new', and close the stuck tab or ask the user to.",
+        "On Obscura the next command that times out replaces it with a blank tab: browser_open the page again.",
+        rawDetails,
+      ].join("\n");
+    case "outcome-unknown":
+      return [
+        "The command reached the browser daemon but no answer came back, so it may or may not have run. It was not sent again.",
+        "Check the page first (browser_snapshot, browser_get or browser_status), and repeat the action only if it did not take effect.",
+        rawDetails,
+      ].join("\n");
     case "target-gone":
       return [
         "The controlled browser page target disappeared or its context was destroyed.",

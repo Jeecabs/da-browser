@@ -770,6 +770,9 @@ export function explainFailure(text: string): { reason: string; hint?: string } 
   if (/^Arc is not reachable/.test(first)) return { reason: "Arc not reachable", hint: "relaunch Arc with remote debugging, then /browser connect" };
   if (/pinned browser tab is gone/.test(first)) return { reason: "tab closed", hint: "/browser connect opens a fresh one" };
   if (/page target disappeared/.test(first)) return { reason: "page went away", hint: "/browser connect opens a fresh tab" };
+  if (/pinned by another agent session/.test(text)) return { reason: "tab belongs to another session", hint: "pick another tab, or open a new one" };
+  if (/controlled tab stopped responding/.test(text)) return { reason: "tab stopped responding", hint: "continue in a new tab and close the stuck one" };
+  if (/may or may not have run/.test(text)) return { reason: "no answer from the browser", hint: "the action may have run; check the page before repeating it" };
   if (/did not respond in time/.test(first)) return { reason: "page busy", hint: "retry, or wait for a known element first" };
   if (/requires agent-browser/i.test(text)) return { reason: "agent-browser too old", hint: "npm i -g agent-browser@latest" };
   return { reason: first.length > 100 ? `${first.slice(0, 99)}…` : first || "failed" };

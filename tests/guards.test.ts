@@ -743,6 +743,58 @@ test("browser state helpers normalize refs, ports, and persisted state", () => {
 });
 
 
+// Messages are agent-browser 0.43.0's own, captured from a local probe or its source.
+test("classifyCdpError names agent-browser's own stop codes before any generic pattern", () => {
+  const wedged = JSON.stringify({
+    success: false,
+    code: "page_wedged",
+    data: { targetId: "TARGET-A", replaced: false, lastUrl: "https://example.com/" },
+    error: "page_wedged: the active tab (https://example.com/) stopped responding; close it or switch tabs to continue",
+  });
+  assert.equal(classifyCdpError(wedged), "page-wedged");
+  assert.equal(
+    classifyCdpError("✗ page_wedged: the active tab stopped responding and was replaced by a blank tab; navigate again to continue"),
+    "page-wedged",
+  );
+
+  // The socket error inside an outcome_unknown must not send it down the retry path.
+  const unknownOutcome = JSON.stringify({
+    success: false,
+    code: "outcome_unknown",
+    error:
+      "Failed to read response: websocket connection closed (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)",
+  });
+  assert.equal(classifyCdpError(unknownOutcome), "outcome-unknown");
+  assert.equal(classifyCdpError("✗ Read timed out (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)"), "outcome-unknown");
+
+  assert.equal(
+    classifyCdpError(
+      JSON.stringify({ success: false, data: null, error: "tab_locked: tab TARGET-A is pinned by session 'pi-a' (--pin-tab); close that session or use another tab" }),
+    ),
+    "tab-locked",
+  );
+
+  // 0.43: a tab that closes under a command fails at once instead of at the timeout.
+  assert.equal(classifyCdpError("✗ Target closed: CDP session 6F2A detached"), "target-gone");
+  // A strict pin stop still wins over everything else in the same output.
+  assert.equal(classifyCdpError(`tab_gone: bound tab is gone\n${wedged}`), "tab-gone");
+
+  // A first command's settings notice, CVE warning and lifecycle block are not failures.
+  assert.equal(
+    classifyCdpError(
+      [
+        "⚠ allowed-domains: default →  (--allowed-domains), relaunched browser",
+        '{"success":false,"data":{"lifecycle":{"launched":true,"relaunchedBrowser":false,"restoreStatus":"not_configured","saveStatus":"not_attempted"}},"error":"Element \'@e7\' is disabled, so the click would not reach it","warning":"Chrome 157.0.8103.79 is behind the current stable release 158.0.8127.36, which fixes 204 CVEs (CVE-2026-121101, +203 more). Update the browser; for agent-browser\'s Chrome, run `agent-browser install`."}',
+      ].join("\n"),
+    ),
+    "unknown",
+  );
+
+  assert.match(friendlyCdpMessage("page-wedged", 9222, "raw wedge"), /stopped responding[\s\S]*browser_tab action='new'[\s\S]*raw wedge/);
+  assert.match(friendlyCdpMessage("outcome-unknown", 9222, "raw outcome"), /may or may not have run[\s\S]*Check the page first[\s\S]*raw outcome/);
+  assert.match(friendlyCdpMessage("tab-locked", 9222, "raw lock"), /pinned by another agent session[\s\S]*raw lock/);
+});
+
 test("classifyCdpError maps CDP failures to recovery kinds", () => {
   assert.equal(
     classifyCdpError(
